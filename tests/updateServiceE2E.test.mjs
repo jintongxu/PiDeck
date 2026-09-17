@@ -525,7 +525,7 @@ test("start applies the configured update source feed URL (default github → no
 	assert.equal(updater.feedUrl, null);
 });
 
-test("switching update source rebuilds the generic feed URL immediately", async (t) => {
+test("switching legacy source cannot change the app feed", async (t) => {
 	const { service, updater, settings } = createAutomaticService({ settings: { updateSource: "github" } });
 	stopAfter(t, service);
 	service.start({ startDelayMs: 0, intervalMs: 60_000 });
@@ -536,7 +536,7 @@ test("switching update source rebuilds the generic feed URL immediately", async 
 	service.applyUpdateSource();
 	assert.equal(
 		updater.feedUrl,
-		"https://atomgit.com/ayuayue/PiDeck/releases/download/latest",
+		null,
 	);
 
 	// 回到官方源：重置 feed，恢复原生 GitHub provider
@@ -545,7 +545,7 @@ test("switching update source rebuilds the generic feed URL immediately", async 
 	assert.equal(updater.feedUrl, null);
 });
 
-test("atomgit source is applied as generic feed URL on start", async (t) => {
+test("legacy atomgit source selects pinned GitHub on start", async (t) => {
 	const { service, updater } = createAutomaticService({
 		settings: { updateSource: "atomgit" },
 	});
@@ -553,11 +553,11 @@ test("atomgit source is applied as generic feed URL on start", async (t) => {
 	service.start({ startDelayMs: 0, intervalMs: 60_000 });
 	assert.equal(
 		updater.feedUrl,
-		"https://atomgit.com/ayuayue/PiDeck/releases/download/latest",
+		null,
 	);
 });
 
-test("manual delivery uses latestReleaseUrl from the configured atomgit source per check", async (t) => {
+test("manual delivery ignores legacy atomgit setting", async (t) => {
 	let receivedUrl;
 	const { service, settings } = createManualService((latestReleaseUrl) => {
 		receivedUrl = latestReleaseUrl;
@@ -567,5 +567,5 @@ test("manual delivery uses latestReleaseUrl from the configured atomgit source p
 	await settings.update({ updateSource: "atomgit" });
 	await service.checkNow();
 	// macOS manual 检查：AtomGit 源 URL 传进检查器（GitHub 源时为 undefined）
-	assert.equal(receivedUrl, "https://atomgit.com/ayuayue/PiDeck/releases/latest");
+	assert.equal(receivedUrl, undefined);
 });

@@ -975,6 +975,35 @@ test("Session UI response requires the current binding, generation, and pending 
   assert.equal(harness.calls.uiResponse, 1);
 });
 
+test("Session UI secret metadata stays local to the runtime snapshot", () => {
+  const { SessionRuntimeCoordinator } = loadCoordinator();
+  const harness = createHarness({
+    tabs: [{ id: "agent-a", status: "idle", createdAt: 1 }],
+  });
+  const coordinator = new SessionRuntimeCoordinator(
+    harness.catalog,
+    harness.agents,
+    harness.sender,
+  );
+  const generation = coordinator.bindExistingAgent("session-1", "agent-a");
+  coordinator.observeRuntimeEvent({
+    sessionId: "session-1",
+    agentId: "agent-a",
+    runtimeGeneration: generation,
+    sourceChannel: "agents:ui-request",
+    payload: {
+      requestId: "ssh-secret",
+      method: "input",
+      title: "Unlock SSH manager",
+      secret: true,
+    },
+  });
+  const pending = coordinator.listPendingUiRequests("session-1");
+  assert.equal(pending.length, 1);
+  assert.equal(pending[0].secret, true);
+  assert.equal(pending[0].title, "Unlock SSH manager");
+});
+
 test("error runtime keeps its binding until the pending Session UI request is answered", async () => {
   const { SessionRuntimeCoordinator } = loadCoordinator();
   const harness = createHarness({

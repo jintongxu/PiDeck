@@ -44,19 +44,19 @@ const mainModule = loadTsModule("src/main/update/updateSources.ts", {
 const { normalizeUpdateSource, updateSourceFeedUrl, updateSourceLatestReleaseUrl } = mainModule;
 const { gitHubLatestDownloadBase, atomGitFeedUrl, normalizeCustomMirrorHost } = shared;
 
-test("normalizeUpdateSource: 已知 id 原样保留", () => {
-	assert.equal(normalizeUpdateSource("atomgit"), "atomgit");
+test("normalizeUpdateSource: 旧源统一归一化为 github", () => {
+	assert.equal(normalizeUpdateSource("atomgit"), "github");
 	assert.equal(normalizeUpdateSource("github"), "github");
 });
 
-test("normalizeUpdateSource: 未知/非字符串回退 atomgit（默认首选）", () => {
-	assert.equal(normalizeUpdateSource("ghfast"), "atomgit");
-	assert.equal(normalizeUpdateSource("custom"), "atomgit");
-	assert.equal(normalizeUpdateSource("hacked-source"), "atomgit");
-	assert.equal(normalizeUpdateSource(undefined), "atomgit");
-	assert.equal(normalizeUpdateSource(null), "atomgit");
-	assert.equal(normalizeUpdateSource(42), "atomgit");
-	assert.equal(normalizeUpdateSource(""), "atomgit");
+test("normalizeUpdateSource: 未知/非字符串回退 github", () => {
+	assert.equal(normalizeUpdateSource("ghfast"), "github");
+	assert.equal(normalizeUpdateSource("custom"), "github");
+	assert.equal(normalizeUpdateSource("hacked-source"), "github");
+	assert.equal(normalizeUpdateSource(undefined), "github");
+	assert.equal(normalizeUpdateSource(null), "github");
+	assert.equal(normalizeUpdateSource(42), "github");
+	assert.equal(normalizeUpdateSource(""), "github");
 });
 
 test("updateSourceFeedUrl: github 源返回 null（走内置 app-update.yml 通道）", () => {
@@ -64,10 +64,10 @@ test("updateSourceFeedUrl: github 源返回 null（走内置 app-update.yml 通�
 	assert.equal(updateSourceFeedUrl("github", "https://custom.example.com"), null);
 });
 
-test("updateSourceFeedUrl: atomgit 源生成 AtomGit generic feed baseUrl", () => {
+test("updateSourceFeedUrl: 旧 atomgit 设置不改变应用 feed，独立资产地址保持不变", () => {
 	assert.equal(
 		updateSourceFeedUrl("atomgit"),
-		"https://atomgit.com/ayuayue/PiDeck/releases/download/latest",
+		null,
 	);
 	assert.equal(atomGitFeedUrl(), "https://atomgit.com/ayuayue/PiDeck/releases/download/latest");
 	assert.equal(
@@ -76,10 +76,10 @@ test("updateSourceFeedUrl: atomgit 源生成 AtomGit generic feed baseUrl", () =
 	);
 });
 
-test("updateSourceLatestReleaseUrl: macOS manual 检查的 AtomGit release 页面 URL", () => {
+test("updateSourceLatestReleaseUrl: macOS manual 旧设置使用默认 fork GitHub URL", () => {
 	assert.equal(
 		updateSourceLatestReleaseUrl("atomgit"),
-		"https://atomgit.com/ayuayue/PiDeck/releases/latest",
+		null,
 	);
 	assert.equal(updateSourceLatestReleaseUrl("github"), null);
 });

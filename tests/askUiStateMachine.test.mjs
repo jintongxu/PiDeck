@@ -302,6 +302,56 @@ test("AgentManager select 无选项降级为 input（不静默取消）", () => 
 	assert.doesNotMatch(source, /select 无选项时自动取消，不等用户响应/);
 });
 
+test("PiDeck SSH 适配：secret 请求脱离标题并渲染为密码字段", () => {
+	const manager = readFileSync("src/main/pi/AgentManager.ts", "utf8");
+	const atoms = readFileSync("src/renderer/src/atoms/session-atoms.ts", "utf8");
+	const overlay = readFileSync("src/renderer/src/components/overlays/SessionRuntimeUiOverlay.tsx", "utf8");
+	const feishu = readFileSync("src/main/feishu/FeishuBridge.ts", "utf8");
+	assert.match(manager, /\[pideck-secret\]/);
+	assert.match(manager, /secret: true/);
+	assert.match(atoms, /secret: payload\.secret === true/);
+	assert.match(overlay, /type=\{request\.secret \? "password" : "text"\}/);
+	assert.match(feishu, /typed\.secret === true/);
+});
+
+test("PiDeck SSH 适配脚本保持幂等，并同时覆盖 RPC 主机选择", () => {
+	const patch = readFileSync("scripts/patch-pi-maestro-ssh.mjs", "utf8");
+	assert.match(patch, /already patched/);
+	assert.match(patch, /ctx\.mode === "rpc"/);
+	assert.match(patch, /runRpcManager/);
+	assert.match(patch, /pideck-secret/);
+});
+
+test("PiDeck RPC 发现 pi-maestro-flow 时跳过冲突的内置 todo", () => {
+	const resolver = readFileSync("src/main/extensions/piProcessExtensionResolvers.ts", "utf8");
+	assert.match(resolver, /isPiMaestroFlowPackageSource/);
+	assert.match(resolver, /pi-maestro-flow/);
+	assert.match(resolver, /pi-deck-todo\.ts/);
+	assert.match(resolver, /filterConflictingBuiltIns/);
+	assert.match(resolver, /resolveBuiltInExtensionPaths/);
+	assert.match(resolver, /resolveEnabledExtensionPaths/);
+});
+
+test("SSH 主机按钮复用现有 RPC 命令并显示 maestro-ssh 状态", () => {
+	const manager = readFileSync("src/main/pi/AgentManager.ts", "utf8");
+	const atoms = readFileSync("src/renderer/src/atoms/session-atoms.ts", "utf8");
+	const controller = readFileSync("src/renderer/src/hooks/useSessionComposerController.ts", "utf8");
+	const area = readFileSync("src/renderer/src/components/session/ComposerArea.tsx", "utf8");
+	const components = readFileSync("src/renderer/src/components/session/ComposerComponents.tsx", "utf8");
+	assert.match(manager, /method === "setStatus"/);
+	assert.match(manager, /sshHostPicker/);
+	assert.match(manager, /sshSecret/);
+	assert.match(manager, /isPrivateSshControl/);
+	assert.doesNotMatch(controller, /message: "\/ssh"/);
+	assert.match(manager, /statusKey/);
+	assert.match(atoms, /statuses: Record<string, string>/);
+	assert.match(atoms, /request\.method === "setStatus"/);
+	assert.match(controller, /statuses\["maestro-ssh"\]/);
+	assert.match(controller, /message: "__pideck_ssh_control__"/);
+	assert.match(area, /onOpenSsh=\{composer\.backend === "pi" \? composer\.openSsh : undefined\}/);
+	assert.match(components, /app\.sshSwitchHost/);
+});
+
 test("ask_question 扩展 schema 支持 multi_select 且强制走批量 envelope", () => {
 	const ext = readFileSync("resources/extensions/pi-deck-ask-question.ts", "utf8");
 	// 批量与单问题两处类型枚举都含 multi_select

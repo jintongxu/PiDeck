@@ -32,7 +32,7 @@ const {
 test("generateFallbackAppUpdateConfigYaml 生成合法的 GitHub provider 配置", () => {
 	const yaml = generateFallbackAppUpdateConfigYaml();
 	assert.match(yaml, /provider:\s*github/);
-	assert.match(yaml, /owner:\s*ayuayue/);
+	assert.match(yaml, /owner:\s*jintongxu/);
 	assert.match(yaml, /repo:\s*PiDeck/);
 	assert.match(yaml, /updaterCacheDirName:\s*pi-desktop-updater/);
 

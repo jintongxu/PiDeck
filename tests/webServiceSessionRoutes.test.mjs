@@ -324,6 +324,33 @@ test("web state exposes pending UI requests and ui-response writes them back", a
 	});
 });
 
+test("web state never exposes secret UI requests", async () => {
+	const pending = [
+		{
+			sessionId: "session-1",
+			agentId: "agent-1",
+			runtimeGeneration: 3,
+			requestId: "ssh-secret",
+			method: "input",
+			title: "Master password",
+			secret: true,
+		},
+		{
+			sessionId: "session-1",
+			agentId: "agent-1",
+			runtimeGeneration: 3,
+			requestId: "ordinary-input",
+			method: "input",
+			title: "Question",
+		},
+	];
+	await withServer(async ({ baseUrl }) => {
+		const response = await fetch(`${baseUrl}/api/state`);
+		const state = await response.json();
+		assert.deepEqual(state.pendingUiRequests.map((item) => item.requestId), ["ordinary-input"]);
+	}, { listPendingUiRequests: () => pending });
+});
+
 test("Web project route deletes a registered project but protects the built-in chat project", async () => {
 	await withServer(async ({ baseUrl, calls }) => {
 		const deleteResponse = await fetch(`${baseUrl}/api/projects/project-1/delete`, { method: "POST" });

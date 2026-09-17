@@ -36,19 +36,8 @@ function jsonResponse(body, { status = 200 } = {}) {
 	};
 }
 
-/** AtomGit OpenAPI contents 响应替身。 */
-function atomgitContentsResponse(markdown) {
-	return jsonResponse(
-		JSON.stringify({
-			type: "file",
-			encoding: "base64",
-			content: Buffer.from(markdown, "utf8").toString("base64"),
-		}),
-	);
-}
-
-const ATOMGIT_API_URL =
-	"https://api.atomgit.com/api/v5/repos/ayuayue/PiDeck/contents/CHANGELOG.zh-CN.md?ref=main";
+const atomgitContentsResponse = jsonResponse; // Legacy test fixture name; app responses are raw markdown.
+const ATOMGIT_API_URL = "https://raw.githubusercontent.com/jintongxu/PiDeck/main/CHANGELOG.zh-CN.md";
 
 /** 每例独立临时缓存目录，用完即删。 */
 function makeCacheDir() {
@@ -118,7 +107,7 @@ test("expired cache triggers a refetch that overwrites it", async () => {
 		assert.equal(calls.length, 2);
 
 		// 缓存文件被新内容覆盖
-		const cached = readFileSync(join(cacheDir, "CHANGELOG.zh-CN.md"), "utf8");
+		const cached = readFileSync(join(cacheDir, "jintongxu-PiDeck", "CHANGELOG.zh-CN.md"), "utf8");
 		assert.match(cached, /v0\.7\.6/);
 	} finally {
 		rmSync(cacheDir, { recursive: true, force: true });
@@ -146,7 +135,7 @@ test("forceRefresh bypasses a fresh cache and overwrites it", async () => {
 		assert.equal(refreshed.fromCache, false);
 		assert.equal(refreshed.stale, false);
 		assert.match(refreshed.markdown, /v0\.7\.6/, "强制刷新拿到最新");
-		assert.match(readFileSync(join(cacheDir, "CHANGELOG.zh-CN.md"), "utf8"), /v0\.7\.6/);
+		assert.match(readFileSync(join(cacheDir, "jintongxu-PiDeck", "CHANGELOG.zh-CN.md"), "utf8"), /v0\.7\.6/);
 	} finally {
 		rmSync(cacheDir, { recursive: true, force: true });
 	}
@@ -201,7 +190,7 @@ test("languages are cached independently and corrupt cache entries are ignored",
 	const cacheDir = makeCacheDir();
 	try {
 		const enUrl =
-			"https://api.atomgit.com/api/v5/repos/ayuayue/PiDeck/contents/CHANGELOG.md?ref=main";
+			"https://raw.githubusercontent.com/jintongxu/PiDeck/main/CHANGELOG.md";
 		const calls = [];
 		const service = new ChangelogService({
 			source: () => "atomgit",
@@ -210,7 +199,7 @@ test("languages are cached independently and corrupt cache entries are ignored",
 				{
 					[ATOMGIT_API_URL]: atomgitContentsResponse(REAL_CHANGELOG),
 					[enUrl]: jsonResponse('{"message":"Not Found"}'), // 英文仓库里不存在 → 形态异常回退
-					"https://raw.githubusercontent.com/ayuayue/PiDeck/main/CHANGELOG.md":
+					"https://raw.githubusercontent.com/jintongxu/PiDeck/main/CHANGELOG.md":
 						jsonResponse(REAL_CHANGELOG),
 				},
 				calls,
@@ -237,8 +226,8 @@ test("languages are cached independently and corrupt cache entries are ignored",
 		assert.match(zhAgain.markdown, /v0\.7\.5-beta/);
 
 		// 坏缓存（meta 缺失）被忽略而不是当成合法内容
-		writeFileSync(join(cacheDir, "CHANGELOG.md"), REAL_CHANGELOG, "utf8");
-		rmSync(join(cacheDir, "meta.json"), { force: true });
+		writeFileSync(join(cacheDir, "jintongxu-PiDeck", "CHANGELOG.md"), REAL_CHANGELOG, "utf8");
+		rmSync(join(cacheDir, "jintongxu-PiDeck", "meta.json"), { force: true });
 		const broken = new ChangelogService({
 			source: () => "atomgit",
 			cacheDir,

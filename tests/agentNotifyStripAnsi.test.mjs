@@ -60,3 +60,48 @@ test("extension notify without ANSI escapes passes through unchanged", () => {
 	assert.equal(received.length, 1);
 	assert.equal(received[0].message, "Plain message");
 });
+
+test("PiDeck suppresses unavailable LSP notifications without suppressing diagnostics", () => {
+	const manager = createManager();
+	const received = [];
+	const off = manager.onOutput((channel, payload) => {
+		if (channel === "agents:ui-request") received.push(payload);
+	});
+	for (const message of [
+		"LSP check unavailable: typescript: spawn typescript-language-server ENOENT",
+		"\u001B[33mLSP check unavailable: server not installed\u001B[0m",
+		"LSP src/main.ts: 1 error(s)",
+	]) {
+		manager.handleUIRequest("agent-1", {
+			type: "extension_ui_request",
+			method: "notify",
+			id: "lsp-notify",
+			message,
+			notifyType: "warning",
+		});
+	}
+	off();
+	assert.deepEqual(received.map((payload) => payload.message), [
+		"LSP src/main.ts: 1 error(s)",
+	]);
+});
+
+test("PiDeck SSH secret input strips the private marker and emits secret metadata", () => {
+	const manager = createManager();
+	const received = [];
+	const off = manager.onOutput((channel, payload) => {
+		if (channel === "agents:ui-request") received.push(payload);
+	});
+	manager.handleUIRequest("agent-1", {
+		type: "extension_ui_request",
+		method: "input",
+		id: "ssh-secret-1",
+		title: "[pideck-secret] Unlock SSH manager",
+		placeholder: "Master password",
+	});
+	off();
+	assert.equal(received.length, 1);
+	assert.equal(received[0].title, "Unlock SSH manager");
+	assert.equal(received[0].secret, true);
+	assert.doesNotMatch(received[0].title, /pideck-secret/);
+});
