@@ -13,7 +13,7 @@
 
 import type { UpdateSourceId } from "./types/settings";
 
-/** 更新所指向的 GitHub 仓库坐标（唯一事实来源，与 main/update/releaseRepo.ts 同源）。 */
+/** 更新所指向的 GitHub 仓库坐标（独立扩展、catalog 与 runtime 资产使用；应用更新使用下方 APP_UPDATE 常量）。 */
 export const UPDATE_REPO_OWNER = "ayuayue";
 export const UPDATE_REPO = "PiDeck";
 
@@ -84,3 +84,7 @@ export function normalizeCustomMirrorHost(raw: string | null | undefined): strin
     return null;
   }
 }
+/** Application updates are independent of built-in asset sources. */
+export const APP_UPDATE_REPO_OWNER = "jintongxu";
+export const APP_UPDATE_REPO = "PiDeck";
+export const APP_UPDATE_RELEASES_URL = `https://github.com/${APP_UPDATE_REPO_OWNER}/${APP_UPDATE_REPO}/releases`;

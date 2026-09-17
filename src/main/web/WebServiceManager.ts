@@ -874,7 +874,8 @@ export class WebServiceManager {
 			sessions,
 			runtimes,
 			messagesBySession,
-			pendingUiRequests: this.deps.listPendingUiRequests(),
+			// Password prompts are local-only even when the Web service is enabled.
+			pendingUiRequests: this.deps.listPendingUiRequests().filter((request) => !request.secret && !request.sshSecret && !request.sshHostPicker),
 		};
 	}
 

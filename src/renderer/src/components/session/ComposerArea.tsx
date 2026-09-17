@@ -259,6 +259,8 @@ export const ComposerArea = forwardRef<HTMLElement, ComposerAreaProps>(function 
                 backend={composer.backend}
                 onChangeBackend={composer.changeBackend}
                 feishuIndicator={feishuIndicator}
+                sshHostLabel={composer.backend === "pi" ? composer.sshHostLabel : undefined}
+                onOpenSsh={composer.backend === "pi" ? composer.openSsh : undefined}
                 securityControl={
                   /* C20：后端安全控制位统一入口（pi 安全等级 / DSH 权限预设） */
                   <SecurityControl sessionId={props.sessionId} backend={composer.backend} disabled={composer.isStarting} />

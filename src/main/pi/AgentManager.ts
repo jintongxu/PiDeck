@@ -1881,6 +1881,7 @@ export class AgentManager {
 		const runtime = this.requireRuntime(input.agentId);
 		const trimmed = input.message.trim();
 		const hasImages = input.images && input.images.length > 0;
+		const isPrivateSshControl = trimmed === "__pideck_ssh_control__";
 		const agentMessage = input.agentMessage?.trim() || trimmed || "Describe this image.";
 		// 允许只有图片没有文字的情况发送
 		if (!trimmed && !hasImages) {
@@ -1953,20 +1954,23 @@ export class AgentManager {
 			// 删除按钮仍拿着乐观 id，不能再另起 UUID 导致 Message not found。
 			...(input.requestId ? { requestId: input.requestId } : {}),
 		};
-		this.addMessage(
-			input.agentId,
-			"user",
-			trimmed || this.translate("session.imagePlaceholder"),
-			Object.keys(optimisticMeta).length > 0 ? optimisticMeta : undefined,
-			input.images,
-		);
+		if (!isPrivateSshControl) {
+			this.addMessage(
+				input.agentId,
+				"user",
+				trimmed || this.translate("session.imagePlaceholder"),
+				Object.keys(optimisticMeta).length > 0 ? optimisticMeta : undefined,
+				input.images,
+			);
+		}
 
 		// streamingBehavior 只在 agent 忙碌时需要；UI 可以显式传 steer/followUp 以复用 pi 队列语义。
 		// 当前端排队 flush 连续发送多条消息时，第一条会触发 agent_start 使 agent 变忙碌，
 		// 后续消息必须带 streamingBehavior 否则 pi 直接返回 error。这里自动兜底。
 		// images 用于传递粘贴/拖拽的图片，pi 会将 base64 图片直接传给支持视觉的模型。
 		try {
-			const promptIsExtensionCommand = await this.promptMatchesRegisteredExtensionCommand(runtime, agentMessage);
+			const promptIsExtensionCommand = isPrivateSshControl ||
+				await this.promptMatchesRegisteredExtensionCommand(runtime, agentMessage);
 			const requestPayload: Record<string, unknown> = {
 				type: "prompt",
 				message: agentMessage,
@@ -5381,6 +5385,9 @@ export class AgentManager {
 		const requestId = String(typed.id ?? "");
 		// pi RPC 协议将 setWidget / dialog 字段放在顶层，不嵌套 params
 		if (method === "notify") {
+			const message = stripAnsi(String(typed.message ?? ""));
+			// 只屏蔽客户端弹出提醒，不改动 pi 的 LSP 检查、工具结果或会话记录。
+			if (/^LSP check unavailable\b/i.test(message.trimStart())) return;
 			this.emit(ipcChannels.agentsUiRequest, {
 				agentId,
 				requestId,
@@ -5389,7 +5396,7 @@ export class AgentManager {
 				// 扩展的 notify 消息常带终端颜色转义（如 billion-context-pi 的更新通知
 				// `\x1B[32m✔ ACP auto-updated ...\x1B[0m`），toast 不是终端，直接透传会显示乱码转义符，
 				// 在进程边界统一清洗后再交给渲染层。
-				message: stripAnsi(String(typed.message ?? "")),
+				message,
 				notifyType: typed.notifyType,
 			});
 			return;
@@ -5419,13 +5426,35 @@ export class AgentManager {
 			});
 			return;
 		}
-		// 其他非对话 UI 方法暂不占用桌面 UI 空间。
-		if (["setStatus", "setTitle"].includes(method)) return;
+		// setStatus 是非阻塞的扩展状态，不应打开交互卡片；仅转发结构化状态，
+		// 供 PiDeck 输入框等局部 UI 展示（例如当前 SSH 主机）。setTitle 仍保持静默。
+		if (method === "setStatus") {
+			this.emit(ipcChannels.agentsUiRequest, {
+				agentId,
+				requestId,
+				method,
+				title: "",
+				statusKey: typeof typed.statusKey === "string" ? typed.statusKey : "",
+				statusText: typeof typed.statusText === "string" ? typed.statusText : undefined,
+			});
+			return;
+		}
+		if (method === "setTitle") return;
 		if (!["select", "confirm", "input", "editor"].includes(method)) return;
 
 		// Batch ask_question sends its form as an input title envelope. Decode it at
 		// the process boundary so no renderer can mistake the raw JSON for a prompt.
 		const rawTitle = String(typed.title ?? typed.question ?? "");
+		// pi-maestro-flow uses this private marker for secrets when running through
+		// PiDeck's RPC host. Strip it before display and carry only a boolean to the
+		// renderer; the response still uses the standard extension UI protocol.
+		const isSecret = rawTitle.startsWith("[pideck-secret] ");
+		const isSshSecret = rawTitle.startsWith("[pideck-secret] [pideck-ssh-secret] ");
+		const isSshHostPicker = rawTitle.startsWith("[pideck-ssh-hosts] ");
+		const secretTitle = isSshSecret ? rawTitle.slice("[pideck-secret] [pideck-ssh-secret] ".length) : rawTitle;
+		const displayTitle = isSecret
+			? (isSshSecret ? secretTitle : rawTitle.slice("[pideck-secret] ".length))
+			: (isSshHostPicker ? rawTitle.slice("[pideck-ssh-hosts] ".length) : rawTitle);
 		const batchEnvelope = this.tryParseBatchAskEnvelope(rawTitle);
 		const rawOptions = Array.isArray(typed.options)
 			? typed.options.filter((option): option is string => typeof option === "string")
@@ -5457,11 +5486,14 @@ export class AgentManager {
 					agentId,
 					requestId,
 					method: effectiveMethod,
-					title: rawTitle,
+					title: displayTitle,
 					options: effectiveOptions,
 					placeholder: typed.placeholder as string | undefined,
 					prefill: typed.prefill as string | undefined,
 					allowOther: typed.allowOther === true || hasCustomOption,
+					...(isSecret ? { secret: true } : {}),
+					...(isSshSecret ? { sshSecret: true } : {}),
+					...(isSshHostPicker ? { sshHostPicker: true } : {}),
 				};
 
 		// 记录 pending UI 请求，用于 abort 时自动 cancel；raisedAt 同时作为用户等待计时起点

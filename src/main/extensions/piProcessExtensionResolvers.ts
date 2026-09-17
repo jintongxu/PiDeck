@@ -1,5 +1,6 @@
 import { app } from "electron";
-import { basename } from "node:path";
+import { homedir } from "node:os";
+import { basename, join } from "node:path";
 import type { AppSettings } from "../../shared/types";
 import {
 	listActiveBuiltInExtensionPaths,
@@ -8,6 +9,49 @@ import {
 } from "./builtInExtensions";
 import { resolveEnabledExtensionPaths } from "./enabledExtensionResolver";
 import { readProjectResourceOverrides } from "../projects/projectResourceOverrides";
+import { readSettingsObject } from "../resourceWhitelist";
+
+const MAESTRO_FLOW_PACKAGE = "pi-maestro-flow";
+const CONFLICTING_BUILT_IN = "pi-deck-todo.ts";
+
+/** Package sources may be strings or filtered package objects in pi settings. */
+function packageSource(value: unknown): string | undefined {
+	if (typeof value === "string") return value.trim();
+	if (value && typeof value === "object" && !Array.isArray(value)) {
+		const source = (value as { source?: unknown }).source;
+		return typeof source === "string" ? source.trim() : undefined;
+	}
+	return undefined;
+}
+
+/** Exported for focused tests and to keep package-name matching explicit. */
+export function isPiMaestroFlowPackageSource(source: string): boolean {
+	const normalized = source.trim().toLowerCase().replace(/\\/g, "/");
+	const withoutProtocol = normalized.startsWith("npm:") ? normalized.slice(4) : normalized;
+	return (
+		withoutProtocol === MAESTRO_FLOW_PACKAGE ||
+		withoutProtocol.startsWith(`${MAESTRO_FLOW_PACKAGE}@`) ||
+		withoutProtocol.endsWith(`/${MAESTRO_FLOW_PACKAGE}`) ||
+		withoutProtocol.includes(`/${MAESTRO_FLOW_PACKAGE}@`)
+	);
+}
+
+function hasConfiguredMaestroFlow(cwd: string, includeProjectResources: boolean): boolean {
+	const settingsFiles = [join(homedir(), ".pi", "agent", "settings.json")];
+	if (includeProjectResources) settingsFiles.push(join(cwd, ".pi", "settings.json"));
+	return settingsFiles.some((settingsFile) => {
+		const packages = readSettingsObject(settingsFile).packages;
+		return Array.isArray(packages) && packages.some((entry) => {
+			const source = packageSource(entry);
+			return source !== undefined && isPiMaestroFlowPackageSource(source);
+		});
+	});
+}
+
+function filterConflictingBuiltIns(paths: string[], cwd: string, includeProjectResources: boolean): string[] {
+	if (!hasConfiguredMaestroFlow(cwd, includeProjectResources)) return paths;
+	return paths.filter((path) => basename(path).toLowerCase() !== CONFLICTING_BUILT_IN);
+}
 
 /**
  * 为 PiProcess 构造扩展解析器（内置扩展注入 + 白名单枚举）。
@@ -46,13 +90,14 @@ export function createPiProcessExtensionResolvers(
 					? readProjectResourceOverrides(cwd).disabledGlobalExtensions
 					: [],
 			);
-			return listActiveBuiltInExtensionPaths(
+			const paths = listActiveBuiltInExtensionPaths(
 				builtInRoots,
 				processSettings?.removedBuiltInExtensions ?? settings.removedBuiltInExtensions ?? [],
 			).filter((path) => !disabledForProject.has(basename(path)));
+			return filterConflictingBuiltIns(paths, cwd, includeProjectResources);
 		},
-		resolveEnabledExtensionPaths: (processSettings, _processCwd, includeProjectResources = true) =>
-			resolveEnabledExtensionPaths({
+		resolveEnabledExtensionPaths: (processSettings, _processCwd, includeProjectResources = true) => {
+			const paths = resolveEnabledExtensionPaths({
 				cwd,
 				includeProjectResources,
 				disabled:
@@ -62,6 +107,10 @@ export function createPiProcessExtensionResolvers(
 					settings.removedBuiltInExtensions ??
 					[],
 				builtInRoots,
-			}),
+			});
+			return paths === null
+				? null
+				: filterConflictingBuiltIns(paths, cwd, includeProjectResources);
+		},
 	};
 }

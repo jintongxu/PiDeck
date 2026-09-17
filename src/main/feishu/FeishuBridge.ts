@@ -1480,6 +1480,9 @@ export class FeishuBridge {
 		// 边界校验：只处理需要用户回答的对话类方法，notify/setWidget 等纯通知不占飞书卡片
 		if (!requestId || !isAskMethod(rawMethod)) return;
 		const method = rawMethod;
+		// Secret prompts (for example SSH manager unlock) must stay in the local
+		// PiDeck window and must never be rendered into a remote chat card.
+		if (typed.secret === true || typed.sshSecret === true || typed.sshHostPicker === true || String(typed.title ?? "").startsWith("[pideck-secret] ")) return;
 		const chatId = this.getBestChatId(agentId);
 		if (!chatId) return;
 

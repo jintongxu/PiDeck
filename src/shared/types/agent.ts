@@ -267,6 +267,11 @@ export type AgentUiRequest = {
 	requestId: string;
 	method: string;
 	title: string;
+	/** 标准 input 请求是否应以密码字段渲染（例如 pi-maestro-flow SSH 解锁）。 */
+	secret?: boolean;
+	/** SSH-only local control markers; never forward these requests to remote clients. */
+	sshSecret?: boolean;
+	sshHostPicker?: boolean;
 	options?: string[];
 	placeholder?: string;
 	prefill?: string;
@@ -281,6 +286,9 @@ export type AgentUiRequest = {
 	widgetKey?: string;
 	widgetLines?: string[];
 	widgetPlacement?: "aboveEditor" | "belowEditor";
+	/** Non-blocking extension status update (for example the selected SSH host). */
+	statusKey?: string;
+	statusText?: string;
 	/** A batched ask_question envelope rendered as tabs in the session timeline footer. */
 	batchQuestions?: AgentUiBatchQuestion[];
 	batchReview?: boolean;

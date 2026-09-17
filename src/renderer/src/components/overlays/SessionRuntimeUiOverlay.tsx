@@ -600,6 +600,78 @@ export function SessionRuntimeUiOverlay({ sessionId, runtime, ui, responder, onE
 		void answer(request.method, buildAskResponse(request.method, value, { confirmed }));
 	};
 
+	if (request.sshSecret && request.method === "input") {
+			return (
+				<ApprovalCard
+					open={expanded}
+					onOpenChange={(next) => {
+						setExpanded(next);
+						notifyAskExpanded(onExpandedChange, next);
+					}}
+					title={t("app.sshControlTitle")}
+					description={request.title || t("app.sshUnlockDescription")}
+					onCancel={cancel}
+					cancelDisabled={responding}
+					cancelLabel={t("common.close")}
+					className="ask-inline-bar ask-inline-bar--active w-full"
+				>
+					<div className="flex w-full items-center gap-2">
+						<Input
+							type="password"
+							className="h-9 flex-1 rounded-sm border border-border-subtle bg-bg-panel px-2.5 text-control text-text-primary outline-none transition-[border-color,box-shadow] duration-150 focus:border-[var(--color-accent)] focus:shadow-[var(--focus-ring)]"
+							autoFocus
+							value={value}
+							placeholder={request.placeholder || t("app.sshPasswordPlaceholder")}
+							disabled={responding}
+							onChange={(event) => setValue(event.target.value)}
+							onKeyDown={(event) => {
+								if (event.key === "Enter" && !isComposingKeyboardEvent(event) && value.trim()) submitValue(value.trim());
+							}}
+						/>
+						<Button variant="default" disabled={responding || !value.trim()} onClick={() => submitValue(value.trim())}>
+							{t("ask.submit")}
+						</Button>
+					</div>
+				</ApprovalCard>
+			);
+		}
+
+	if (request.sshHostPicker && request.method === "select") {
+			return (
+				<ApprovalCard
+					open={expanded}
+					onOpenChange={(next) => {
+						setExpanded(next);
+						notifyAskExpanded(onExpandedChange, next);
+					}}
+					title={t("app.sshControlTitle")}
+					description={request.title || t("app.sshSelectDescription")}
+					onCancel={cancel}
+					cancelDisabled={responding}
+					cancelLabel={t("common.close")}
+					className="ask-inline-bar ask-inline-bar--active w-full"
+				>
+					<div className="grid min-w-0 grid-cols-2 gap-1.5 max-[480px]:grid-cols-1">
+						{(request.options ?? []).map((option) => {
+							const parsed = splitAskOption(option);
+							return (
+								<Button
+									key={`${request.requestId}:${option}`}
+									variant="outline"
+									className="h-[34px] w-full min-w-0 justify-start truncate px-2 text-left"
+									disabled={responding}
+									onClick={() => submitValue(option)}
+									title={parsed.description || parsed.label}
+								>
+									<span className="truncate">{parsed.label}</span>
+								</Button>
+							);
+						})}
+					</div>
+				</ApprovalCard>
+			);
+		}
+
 	if (request.method === "batch_ask") {
 		return (
 			<BatchAskInlineBar
@@ -748,6 +820,7 @@ export function SessionRuntimeUiOverlay({ sessionId, runtime, ui, responder, onE
 				{request.method === "input" ? (
 					<div className="flex w-full items-center gap-2">
 						<Input
+							type={request.secret ? "password" : "text"}
 							className="h-9 flex-1 rounded-sm border border-border-subtle bg-bg-panel px-2.5 text-control text-text-primary outline-none transition-[border-color,box-shadow] duration-150 focus:border-[var(--color-accent)] focus:shadow-[var(--focus-ring)]"
 							autoFocus
 							value={value}

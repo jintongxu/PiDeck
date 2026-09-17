@@ -47,6 +47,9 @@ export type WebPendingUiRequest = {
 	requestId: string;
 	method: string;
 	title: string;
+	secret?: boolean;
+	sshSecret?: boolean;
+	sshHostPicker?: boolean;
 	options?: string[];
 	placeholder?: string;
 	prefill?: string;

@@ -169,6 +169,10 @@ export type PendingUiRequestSnapshot = {
 	requestId: string;
 	method: string;
 	title: string;
+	/** 本地密码输入请求；这类请求不得转发给远程 Web/聊天渠道。 */
+	secret?: boolean;
+	sshSecret?: boolean;
+	sshHostPicker?: boolean;
 	options?: string[];
 	placeholder?: string;
 	prefill?: string;
@@ -1039,6 +1043,9 @@ export class SessionRuntimeCoordinator {
 			requestId,
 			method: String(event.payload.method),
 			title: typeof event.payload.title === "string" ? event.payload.title : "",
+			secret: event.payload.secret === true,
+			sshSecret: event.payload.sshSecret === true,
+			sshHostPicker: event.payload.sshHostPicker === true,
 			options,
 			placeholder: typeof event.payload.placeholder === "string" ? event.payload.placeholder : undefined,
 			prefill: typeof event.payload.prefill === "string" ? event.payload.prefill : undefined,

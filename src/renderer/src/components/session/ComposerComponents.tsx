@@ -16,6 +16,7 @@ import {
 	Paperclip,
 	Plus,
 	RefreshCw,
+	Server,
 	Sparkles,
 	Star,
 	Target,
@@ -347,6 +348,9 @@ export function ComposerBottomBar(props: {
 	/** 切换后端：UI 层面先停 runtime 再写 catalog。 */
 	onChangeBackend?: (backend: AgentBackend) => void;
 	feishuIndicator?: ReactNode;
+	/** 当前 SSH 主机名；点击按钮可解锁、选择或切换主机。 */
+	sshHostLabel?: string;
+	onOpenSsh?: () => void;
 	/** 安全等级选择器（自包含组件，注入到左下角工具组） */
 	securityControl?: ReactNode;
 	voiceControls: ReactNode;
@@ -590,6 +594,20 @@ export function ComposerBottomBar(props: {
 						</DropdownMenuContent>
 					</DropdownMenu>
 					{props.feishuIndicator}
+					{props.onOpenSsh ? (
+						<Button
+							variant="ghost"
+							size="sm"
+							className="composer-bar-btn ssh h-7 max-w-[12rem] gap-1 rounded-md px-1.5 text-control font-medium text-foreground/75 hover:bg-muted/60"
+							title={props.sshHostLabel ? t("app.sshSwitchHost") : t("app.sshSelectHost")}
+							aria-label={props.sshHostLabel ? t("app.sshSwitchHost") : t("app.sshSelectHost")}
+							onClick={props.onOpenSsh}
+							disabled={props.disabled}
+						>
+							<Server size={14} strokeWidth={1.8} aria-hidden="true" />
+							<span className="min-w-0 truncate">{props.sshHostLabel ?? t("app.sshSelectHostShort")}</span>
+						</Button>
+					) : null}
 					{/* 生图模式无 pi/DSH runtime：安全等级（pi 安全门）与 DSH 权限预设都对图片生成无意义，
 					   且 SecurityControl 按 backend 分发时没有 imagegen 分支会误显示成 pi 安全等级菜单，故直接屏蔽。 */}
 					{isImageGenMode ? null : props.securityControl}

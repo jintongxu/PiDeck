@@ -355,6 +355,10 @@ export function useSessionComposerController(
   );
   const runtime = useAtomValue(sessionRuntimeBySessionIdAtomFamily(sessionId));
   const runtimeUi = useAtomValue(sessionRuntimeUiBySessionIdAtomFamily(sessionId));
+  const sshStatusText = runtimeUi?.statuses["maestro-ssh"];
+  const sshHostLabel = sshStatusText?.startsWith("SSH · ")
+    ? sshStatusText.slice("SSH · ".length).split(" · ")[0]?.trim()
+    : undefined;
   const projectSessions = useAtomValue(
     sessionSummariesByProjectIdAtomFamily(effectiveProjectId ?? ""),
   );
@@ -1034,6 +1038,23 @@ export function useSessionComposerController(
    * 不再设占用门槛（数据可用即可压，低占用时 pi 自行判定 nothing-to-do/too-small）；
    * 压缩中拒绝重复点击；成功弹完成。
    */
+  const openSsh = useCallback(async () => {
+    try {
+      const targetSessionId = ensureSessionId ? await ensureSessionId(sessionId) : sessionId;
+      requireSessionCommand(await desktopApi.sessions.activateRuntime(targetSessionId));
+      const result = await desktopApi.sessions.sendPrompt({
+        sessionId: targetSessionId,
+        requestId: crypto.randomUUID(),
+        // Private extension control marker: pi-maestro-flow intercepts this in
+        // its input hook before the model sees it. No /ssh chat message is sent.
+        message: "__pideck_ssh_control__",
+      });
+      if (!result.accepted) throw new Error(result.error ?? "SSH host selection failed");
+    } catch (error) {
+      showNotice(error instanceof Error ? error.message : String(error), 4000);
+    }
+  }, [ensureSessionId, sessionId]);
+
   const runManualCompact = useCallback(async (
     target: { sessionId: string; agentId: string; runtimeGeneration: number },
     prompt?: string,
@@ -1901,6 +1922,8 @@ export function useSessionComposerController(
     sessionId,
     record,
     runtime,
+    sshHostLabel,
+    openSsh,
     // 引导页优先回显显式切换（guideBackendOverride），否则退回上次偏好/默认 pi；
     // 真实会话以 record 为准。
     backend: record?.backend ?? (isGuideBootstrapSession ? guideBackendOverride : undefined) ?? "pi",

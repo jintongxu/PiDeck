@@ -1,34 +1,8 @@
-/**
- * 应用更新日志（CHANGELOG）拉取服务。
- *
- * 为何在主进程拉取而不是渲染层直接 fetch：
- * - 渲染层受 CORS 与 CSP 约束，raw 域名的跨域读取不可靠；
- * - 主进程可统一复用更新源的镜像策略与超时/大小上限，行为与更新检查一致。
- *
- * ## 源策略（atomgit 优先，GitHub 回退）
- *
- * AtomGit 是国内加速源（与更新源默认值同源）。它的匿名 `/raw/` 路径已被 GitCode
- * 前端应用接管——实测（2026-09）对匿名请求返回 HTTP 200 的 SPA HTML 壳（内含易盾
- * riddler-sdk 验证码脚本），任何 UA / 查询参数变体都一样。因此 atomgit 源**不走
- * raw，直接走官方 OpenAPI**（`api.atomgit.com/api/v5/repos/:owner/:repo/contents/:path`，
- * 返回 JSON、content 为 base64；匿名可读公开仓库，实测稳定且无需鉴权）。
- *
- * 即便如此仍不能「拿到就当成功」：API 响应同样要过内容校验（见 looksLikeChangelog），
- * 平台行为随时可能再变。校验不过就回退下一个源，全部失败返回 null，
- * 由 UI 静默降级为「在浏览器打开」。
- *
- * 注：PiAiCatalogUpdater 的 sourceBaseUrls 仍用匿名 /raw/ 拼法——它大概率同样
- * 拿不到内容（靠 parsePiAiCatalogArtifact 结构校验兜住了失败），后续应迁到同一 API。
- */
+/** App changelog uses only the pinned GitHub repository; no mirror fallback. */
 
 import { join } from "node:path";
 import { mkdir, readFile, writeFile } from "node:fs/promises";
-import {
-	ATOMGIT_API_HOST,
-	ATOMGIT_HOST,
-	UPDATE_REPO,
-	UPDATE_REPO_OWNER,
-} from "../../shared/updateSources";
+import { UPDATE_REPO, UPDATE_REPO_OWNER } from "./releaseRepo";
 import type { UpdateSourceId } from "../../shared/types/settings";
 
 /** CHANGELOG 文件名（按语言）——仓库根目录下的两套并行文件。 */
@@ -182,24 +156,7 @@ export function buildChangelogUrls(input: {
 	const branch = input.branch ?? DEFAULT_BRANCH;
 	const file = input.language === "zh" ? CHANGELOG_FILE_ZH : CHANGELOG_FILE_EN;
 	const repoPath = `${UPDATE_REPO_OWNER}/${UPDATE_REPO}`;
-	const candidates: { id: ChangelogSourceId; url: string }[] = [];
-	const atomgit = {
-		id: "atomgit" as const,
-		url:
-			`${ATOMGIT_API_HOST}/api/v5/repos/${repoPath}/contents/${encodeURIComponent(file)}` +
-			`?ref=${encodeURIComponent(branch)}`,
-	};
-	const github = {
-		id: "github" as const,
-		url: `https://raw.githubusercontent.com/${repoPath}/${branch}/${file}`,
-	};
-	// 用户显式选了官方源时把 GitHub 提前，尊重其选择（官方源用户通常网络可达）。
-	if (input.source === "github") {
-		candidates.push(github, atomgit);
-	} else {
-		candidates.push(atomgit, github);
-	}
-	return candidates;
+	return [{ id: "github", url: `https://raw.githubusercontent.com/${repoPath}/${branch}/${file}` }];
 }
 
 export class ChangelogService {
@@ -216,8 +173,9 @@ export class ChangelogService {
 		this.timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 		this.maxBytes = options.maxBytes ?? DEFAULT_MAX_BYTES;
 		this.branch = options.branch ?? DEFAULT_BRANCH;
-		this.source = options.source ?? (() => "atomgit");
-		this.cacheDir = options.cacheDir ?? null;
+		this.source = options.source ?? (() => "github");
+		// Separate namespace prevents reuse of old upstream/AtomGit changelogs.
+		this.cacheDir = options.cacheDir ? join(options.cacheDir, `${UPDATE_REPO_OWNER}-${UPDATE_REPO}`) : null;
 		this.cacheTtlMs = options.cacheTtlMs ?? CACHE_TTL_MS;
 	}
 
@@ -278,7 +236,7 @@ export class ChangelogService {
 	/** 供 UI 降级用：CHANGELOG 在 AtomGit 上的网页地址（走系统浏览器）。 */
 	changelogPageUrl(language: ChangelogLanguage = "zh"): string {
 		const file = language === "zh" ? CHANGELOG_FILE_ZH : CHANGELOG_FILE_EN;
-		return `${ATOMGIT_HOST}/${UPDATE_REPO_OWNER}/${UPDATE_REPO}/blob/${this.branch}/${file}`;
+		return `https://github.com/${UPDATE_REPO_OWNER}/${UPDATE_REPO}/blob/${this.branch}/${file}`;
 	}
 
 	// ── 本地缓存：正文文件 + meta.json（按语言存抓取时间/来源）。全部静默容错——

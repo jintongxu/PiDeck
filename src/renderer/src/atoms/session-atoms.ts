@@ -132,6 +132,8 @@ export type SessionRuntimeUiState = {
   runtimeGeneration: number;
   requests: Record<string, SessionRuntimeUiRequestState>;
   widgets: Record<string, string[]>;
+  /** Non-blocking extension statuses, keyed by statusKey. */
+  statuses: Record<string, string>;
   notification?: {
     requestId: string;
     message: string;
@@ -985,6 +987,11 @@ function toAgentUiRequest(
     requestId,
     method: typeof payload.method === "string" ? payload.method : "",
     title: typeof payload.title === "string" ? payload.title : "",
+    secret: payload.secret === true,
+    sshSecret: payload.sshSecret === true,
+    sshHostPicker: payload.sshHostPicker === true,
+    statusKey: typeof payload.statusKey === "string" ? payload.statusKey : undefined,
+    statusText: typeof payload.statusText === "string" ? payload.statusText : undefined,
     options: Array.isArray(payload.options)
       ? payload.options.filter((option): option is string => typeof option === "string")
       : undefined,
@@ -1108,6 +1115,7 @@ function applySessionRuntimeUiEvent(
         runtimeGeneration: event.runtimeGeneration,
         requests: {},
         widgets: {},
+        statuses: {},
         revision: 0,
       }
     : current;
@@ -1120,6 +1128,7 @@ function applySessionRuntimeUiEvent(
       runtimeGeneration: event.runtimeGeneration,
       requests: {},
       widgets: {},
+      statuses: {},
       revision: base.revision + 1,
     };
   }
@@ -1174,6 +1183,14 @@ function applySessionRuntimeUiEvent(
     if (request.widgetLines?.length) widgets[widgetKey] = request.widgetLines;
     else delete widgets[widgetKey];
     return { ...base, revision, widgets };
+  }
+  if (request.method === "setStatus") {
+    const statusKey = request.statusKey || "";
+    if (!statusKey) return { ...base, revision };
+    const statuses = { ...(base.statuses ?? {}) };
+    if (request.statusText) statuses[statusKey] = request.statusText;
+    else delete statuses[statusKey];
+    return { ...base, revision, statuses };
   }
   if (!["select", "confirm", "input", "editor", "batch_ask"].includes(request.method)) {
     return { ...base, revision };
