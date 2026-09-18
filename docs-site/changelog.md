@@ -5,6 +5,14 @@
 - [中文 CHANGELOG](https://github.com/ayuayue/PiDeck/blob/main/CHANGELOG.zh-CN.md)
 - [English CHANGELOG](https://github.com/ayuayue/PiDeck/blob/main/CHANGELOG.md)
 
+## v0.7.7
+
+发布时间：2026-09-18
+
+- 🚀 **项目想法箱**
+- 🚀 **从会话保存项目想法**
+- ✨ **Windows 版本验证**
+
 ## v0.7.6
 
 发布时间：2026-09-17

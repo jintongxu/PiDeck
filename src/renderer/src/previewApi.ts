@@ -352,6 +352,32 @@ export function createPreviewApi(): PiDesktopApi {
 			toggleWorktreeEnabled: async () => projects[0],
 			chooseChatPath: async () => null,
 			setChatPath: async () => projects[0],
+			ideas: {
+				list: async () => [],
+				create: async (input) => ({
+					id: "preview-idea",
+					projectId: input.projectId,
+					title: input.title,
+					body: input.body ?? "",
+					status: input.status ?? "inbox",
+					tags: input.tags ?? [],
+					linkedSessionIds: input.linkedSessionIds ?? [],
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+				}),
+				update: async (id, _projectId, patch) => ({
+					id,
+					projectId: projects[0].id,
+					title: patch.title ?? "Preview idea",
+					body: patch.body ?? "",
+					status: patch.status ?? "inbox",
+					tags: patch.tags ?? [],
+					linkedSessionIds: patch.linkedSessionIds ?? [],
+					createdAt: Date.now(),
+					updatedAt: Date.now(),
+				}),
+				delete: async (_id, _projectId) => true,
+			},
 			listModels: async () => [],
 			// 预览 iframe 不需要真实模型目录：构造一个恒空报告（无失败原因），
 			// 与真实通道的 ModelListReport 形状保持一致，避免类型分叉。

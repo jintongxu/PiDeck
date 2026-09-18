@@ -6,7 +6,7 @@ import {
   type ReactNode,
   type RefObject,
 } from "react";
-import type { AgentTab, AgentUiResponse, ChatMessage, GitBranchInfo, ImageContent, Project } from "../../../../shared/types";
+import type { AgentTab, AgentUiResponse, ChatMessage, GitBranchInfo, ImageContent, Project, ProjectIdeaCapture } from "../../../../shared/types";
 import type { QueuedPrompt } from "../../hooks/useQueuedPrompt";
 import type { NoticeId } from "../../utils/notice";
 import type { TerminalDockStateByOwner } from "../../terminalDockState";
@@ -49,6 +49,7 @@ export type SessionPaneServices = {
   editMessage?: (messageId: string, newText: string, entryId?: string) => void;
   deleteMessage?: (messageId: string, entryId?: string) => void;
   forkFromUserMessage?: (message: ChatMessage) => void;
+  saveProjectIdea?: (capture: ProjectIdeaCapture) => void;
   forkingMessageId?: string | null;
   openSidebarSessionById?: (projectId: string, sessionId: string) => Promise<void>;
   /** 后台 Ask toast「前往会话」：按 sessionId 聚焦目标会话并登记常驻 Tab（App 级实现） */

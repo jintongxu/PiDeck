@@ -2,8 +2,14 @@ import { dialog, ipcMain, type BrowserWindow } from "electron";
 import { readFile, readdir, stat } from "node:fs/promises";
 import { join } from "node:path";
 import { ipcChannels } from "../../shared/ipc";
-import type { FeedbackProjectContext } from "../../shared/types";
+import type {
+	CreateProjectIdeaInput,
+	FeedbackProjectContext,
+	ProjectIdeaStatus,
+	UpdateProjectIdeaInput,
+} from "../../shared/types";
 import type { ProjectStore } from "../projects/ProjectStore";
+import type { ProjectIdeaStore } from "../projects/ProjectIdeaStore";
 import type { SettingsStore } from "../settings/SettingsStore";
 import type { GitService } from "../git/GitService";
 import type { WorktreeService } from "../git/WorktreeService";
@@ -19,8 +25,84 @@ import {
 	type WslEnvironment,
 } from "../wsl/WslPaths";
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+	return typeof value === "object" && value !== null;
+}
+
+function isProjectIdeaStatus(value: unknown): value is ProjectIdeaStatus {
+	return value === "inbox" || value === "planned" || value === "doing" || value === "done";
+}
+
+function isProjectIdeaSourceKind(value: unknown): value is "message" | "selection" {
+	return value === "message" || value === "selection";
+}
+
+function parseStringArray(value: unknown, field: string): string[] | undefined {
+	if (value === undefined) return undefined;
+	if (!Array.isArray(value) || value.some((item) => typeof item !== "string")) {
+		throw new Error(`INVALID_PROJECT_IDEA_${field.toUpperCase()}`);
+	}
+	return value.filter((item): item is string => typeof item === "string");
+}
+
+function parseCreateProjectIdea(value: unknown): CreateProjectIdeaInput {
+	if (!isRecord(value) || typeof value.projectId !== "string" || typeof value.title !== "string") {
+		throw new Error("INVALID_PROJECT_IDEA");
+	}
+	if (value.status !== undefined && !isProjectIdeaStatus(value.status)) throw new Error("PROJECT_IDEA_STATUS_INVALID");
+	if (value.sourceKind !== undefined && !isProjectIdeaSourceKind(value.sourceKind)) throw new Error("PROJECT_IDEA_SOURCE_KIND_INVALID");
+	if (value.sourceMessageId !== undefined && value.sourceSessionId === undefined) {
+		throw new Error("PROJECT_IDEA_SOURCE_SESSION_REQUIRED");
+	}
+	return {
+		projectId: value.projectId,
+		title: value.title,
+		body: value.body === undefined ? undefined : typeof value.body === "string" ? value.body : (() => { throw new Error("INVALID_PROJECT_IDEA_BODY"); })(),
+		status: value.status,
+		tags: parseStringArray(value.tags, "tags"),
+		linkedSessionIds: parseStringArray(value.linkedSessionIds, "linked_session_ids"),
+		sourceSessionId: value.sourceSessionId === undefined ? undefined : typeof value.sourceSessionId === "string" ? value.sourceSessionId : (() => { throw new Error("INVALID_PROJECT_IDEA_SOURCE_SESSION"); })(),
+		sourceMessageId: value.sourceMessageId === undefined ? undefined : typeof value.sourceMessageId === "string" ? value.sourceMessageId : (() => { throw new Error("INVALID_PROJECT_IDEA_SOURCE_MESSAGE"); })(),
+		sourceKind: value.sourceKind,
+	};
+}
+
+function parseUpdateProjectIdea(value: unknown): UpdateProjectIdeaInput {
+	if (!isRecord(value)) throw new Error("INVALID_PROJECT_IDEA");
+	const patch: UpdateProjectIdeaInput = {};
+	if ("title" in value) {
+		if (typeof value.title !== "string") throw new Error("INVALID_PROJECT_IDEA_TITLE");
+		patch.title = value.title;
+	}
+	if ("body" in value) {
+		if (typeof value.body !== "string") throw new Error("INVALID_PROJECT_IDEA_BODY");
+		patch.body = value.body;
+	}
+	if ("status" in value) {
+		if (!isProjectIdeaStatus(value.status)) throw new Error("PROJECT_IDEA_STATUS_INVALID");
+		patch.status = value.status;
+	}
+	if ("tags" in value) patch.tags = parseStringArray(value.tags, "tags");
+	if ("linkedSessionIds" in value) patch.linkedSessionIds = parseStringArray(value.linkedSessionIds, "linked_session_ids");
+	if ("sourceSessionId" in value) {
+		if (typeof value.sourceSessionId !== "string") throw new Error("INVALID_PROJECT_IDEA_SOURCE_SESSION");
+		patch.sourceSessionId = value.sourceSessionId;
+	}
+	if ("sourceMessageId" in value) {
+		if (typeof value.sourceMessageId !== "string") throw new Error("INVALID_PROJECT_IDEA_SOURCE_MESSAGE");
+		patch.sourceMessageId = value.sourceMessageId;
+		if (!("sourceSessionId" in value)) throw new Error("PROJECT_IDEA_SOURCE_SESSION_REQUIRED");
+	}
+	if ("sourceKind" in value) {
+		if (!isProjectIdeaSourceKind(value.sourceKind)) throw new Error("PROJECT_IDEA_SOURCE_KIND_INVALID");
+		patch.sourceKind = value.sourceKind;
+	}
+	return patch;
+}
+
 export type ProjectsIpcDeps = {
 	projectStore: ProjectStore;
+	projectIdeaStore: ProjectIdeaStore;
 	settingsStore: SettingsStore;
 	gitService: GitService;
 	worktreeService: WorktreeService;
@@ -36,6 +118,7 @@ export type ProjectsIpcDeps = {
 
 export function registerProjectsIpc({
 	projectStore,
+	projectIdeaStore,
 	settingsStore,
 	gitService,
 	worktreeService,
@@ -132,6 +215,7 @@ export function registerProjectsIpc({
 			? projectStore.listWorktreeChildren(removed.id).map((child) => child.id)
 			: [];
 		await projectStore.remove(id);
+		await projectIdeaStore.deleteByProjectIds([id, ...childIds]);
 		// 侧栏项目删了，catalog 映射也必须走：否则启动 DSH 自动导入按 cwd 再把项目/会话加回来。
 		if (sessionCatalog) {
 			for (const projectId of [id, ...childIds]) {
@@ -166,6 +250,54 @@ export function registerProjectsIpc({
 			return visible;
 		},
 	);
+
+	// ── 项目想法（仅存 userData，不写项目目录） ──
+	ipcMain.handle(ipcChannels.projectIdeasList, async (_event, projectId: unknown) => {
+		if (typeof projectId !== "string" || !projectId) throw new Error("INVALID_PROJECT_ID");
+		if (!projectStore.get(projectId)) throw new Error("PROJECT_NOT_FOUND");
+		return projectIdeaStore.list(projectId);
+	});
+	const assertIdeaProject = (projectId: unknown) => {
+		if (typeof projectId !== "string" || !projectId || !projectStore.get(projectId)) {
+			throw new Error("PROJECT_NOT_FOUND");
+		}
+		return projectId;
+	};
+	const assertSourceSessionProject = (sourceSessionId: string | undefined, projectId: string) => {
+		if (!sourceSessionId) return;
+		if (!sessionCatalog) throw new Error("PROJECT_IDEA_SOURCE_SESSION_UNAVAILABLE");
+		const sourceSession = sessionCatalog.get(sourceSessionId);
+		if (!sourceSession || sourceSession.projectId !== projectId) {
+			throw new Error("PROJECT_IDEA_SOURCE_SESSION_INVALID");
+		}
+	};
+
+	ipcMain.handle(ipcChannels.projectIdeasCreate, async (_event, input: unknown) => {
+		const parsed = parseCreateProjectIdea(input);
+		assertIdeaProject(parsed.projectId);
+		if (!parsed.title.trim()) throw new Error("PROJECT_IDEA_TITLE_REQUIRED");
+		assertSourceSessionProject(parsed.sourceSessionId, parsed.projectId);
+		return projectIdeaStore.create(parsed);
+	});
+	ipcMain.handle(ipcChannels.projectIdeasUpdate, async (_event, id: unknown, projectId: unknown, patch: unknown) => {
+		if (typeof id !== "string" || !id) throw new Error("INVALID_PROJECT_IDEA");
+		const ownerProjectId = assertIdeaProject(projectId);
+		const existing = await projectIdeaStore.get(id);
+		if (!existing) throw new Error("PROJECT_IDEA_NOT_FOUND");
+		if (existing.projectId !== ownerProjectId) throw new Error("PROJECT_IDEA_PROJECT_MISMATCH");
+		const parsedPatch = parseUpdateProjectIdea(patch);
+		const sourceSessionId = parsedPatch.sourceSessionId ?? existing.sourceSessionId;
+		assertSourceSessionProject(sourceSessionId, ownerProjectId);
+		return projectIdeaStore.update(id, parsedPatch);
+	});
+	ipcMain.handle(ipcChannels.projectIdeasDelete, async (_event, id: unknown, projectId: unknown) => {
+		if (typeof id !== "string" || !id) throw new Error("INVALID_PROJECT_IDEA");
+		const ownerProjectId = assertIdeaProject(projectId);
+		const existing = await projectIdeaStore.get(id);
+		if (!existing) throw new Error("PROJECT_IDEA_NOT_FOUND");
+		if (existing.projectId !== ownerProjectId) throw new Error("PROJECT_IDEA_PROJECT_MISMATCH");
+		return projectIdeaStore.delete(id);
+	});
 
 	// ── Worktree 项目管理 ──
 

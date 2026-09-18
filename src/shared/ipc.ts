@@ -24,6 +24,10 @@ export const ipcChannels = {
 	projectsChooseChatPath: "projects:choose-chat-path",
 	// 设置聊天记录目录并持久化
 	projectsSetChatPath: "projects:set-chat-path",
+	projectIdeasList: "project-ideas:list",
+	projectIdeasCreate: "project-ideas:create",
+	projectIdeasUpdate: "project-ideas:update",
+	projectIdeasDelete: "project-ideas:delete",
 	editorsList: "editors:list",
 	editorsRedetect: "editors:redetect",
 	editorsUpdate: "editors:update",

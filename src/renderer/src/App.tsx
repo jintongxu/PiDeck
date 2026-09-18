@@ -44,7 +44,7 @@ import {
   isLanWeb,
   missingElectronPreload,
 } from "./desktopApi";
-import { turnFlowSettingsAtom, defaultAgentBackendAtom, effectiveAgentBackendAtom, busySendDeliveryAtom, imageGenConfigAtom, dshRuntimeStatusAtom, openSettingsAtom, openAutomationModalAtom, sessionRecordsAtom, bumpNewTurnCollapseTickAtom } from "./atoms";
+import { turnFlowSettingsAtom, defaultAgentBackendAtom, effectiveAgentBackendAtom, busySendDeliveryAtom, imageGenConfigAtom, dshRuntimeStatusAtom, openSettingsAtom, openAutomationModalAtom, openProjectIdeasModalAtom, sessionRecordsAtom, bumpNewTurnCollapseTickAtom } from "./atoms";
 import { resolveBusySendDelivery } from "../../shared/busySendDelivery";
 import { FILE_TREE_ABSOLUTE_MAX_DEPTH } from "../../shared/fileTree";
 // 文件链接路由：图片类型走弹窗预览
@@ -54,6 +54,7 @@ import { AppSidebar } from "./components/sidebar/AppSidebar";
 import { AppBootstrap } from "./components/app/AppBootstrap";
 import { SettingsFeatureRoot } from "./components/app/SettingsFeatureRoot";
 import { AutomationModal } from "./components/automation/AutomationModal";
+import { ProjectIdeasModal } from "./components/projectIdeas/ProjectIdeasModal";
 import { useRename } from "./hooks/useRename";
 import { useProjectRuntimeCapabilities } from "./hooks/useRuntimeCapabilities";
 import { useSessionRuntimeBridge } from "./hooks/useSessionRuntimeBridge";
@@ -234,6 +235,7 @@ import type {
   TerminalTarget,
   GitBranchInfo,
   FocusTargetPayload,
+  ProjectIdeaCapture,
 } from "../../shared/types";
 
 export function App() {
@@ -277,6 +279,7 @@ export function App() {
   const setCurrentSessionId = useSetAtom(currentSessionIdAtom);
   const replaceProjectSessions = useSetAtom(replaceProjectSessionsAtom);
   const openAutomationModal = useSetAtom(openAutomationModalAtom);
+  const openProjectIdeasModal = useSetAtom(openProjectIdeasModalAtom);
   const setProjects = useSetAtom(replaceProjectInventoryAtom);
   const applyRuntimeEvent = useSetAtom(applySessionRuntimeEventAtom);
   const upsertSession = useSetAtom(upsertSessionAtom);
@@ -3172,22 +3175,33 @@ export function App() {
   }
 
   async function removeSidebarProject(project: Project) {
-    try {
-      const next = await api.projects.remove(project.id);
-      setProjects(next);
-      updateAfterProjectRemoved(project.id, next);
-    } catch (error) {
-      if (String(error instanceof Error ? error.message : error).includes("PROJECT_HAS_RUNNING_AGENT")) {
-        overlays.showConfirm({
-          title: t("app.projectRemoveBlockedTitle"),
-          message: t("app.projectRemoveBlockedByAgent"),
-          confirmLabel: t("app.projectRemoveBlockedAck"),
-          onConfirm: () => overlays.clearConfirm(),
-        });
-      } else {
-        showToast(error instanceof Error ? error.message : String(error), 5000);
-      }
-    }
+    overlays.showConfirm({
+      title: t("app.projectRemoveTitle"),
+      message: t("app.projectRemoveBodyWithIdeas", { name: project.name }),
+      danger: true,
+      confirmLabel: t("common.delete"),
+      onConfirm: () => {
+        overlays.clearConfirm();
+        void (async () => {
+          try {
+            const next = await api.projects.remove(project.id);
+            setProjects(next);
+            updateAfterProjectRemoved(project.id, next);
+          } catch (error) {
+            if (String(error instanceof Error ? error.message : error).includes("PROJECT_HAS_RUNNING_AGENT")) {
+              overlays.showConfirm({
+                title: t("app.projectRemoveBlockedTitle"),
+                message: t("app.projectRemoveBlockedByAgent"),
+                confirmLabel: t("app.projectRemoveBlockedAck"),
+                onConfirm: () => overlays.clearConfirm(),
+              });
+            } else {
+              showToast(error instanceof Error ? error.message : String(error), 5000);
+            }
+          }
+        })();
+      },
+    });
   }
 
   /**
@@ -3249,6 +3263,7 @@ export function App() {
       },
       manageResources: (project) => setProjectResourcesProject(project),
       manageAutomations: (projectId) => openAutomationModal(projectId),
+      manageIdeas: (projectId) => openProjectIdeasModal(projectId),
       toggleWorktree: toggleProjectWorktree,
       copyPath: async (project) => {
         await navigator.clipboard.writeText(project.path);
@@ -3641,6 +3656,25 @@ export function App() {
     [],
   );
 
+  const saveProjectIdea = useCallback((capture: ProjectIdeaCapture) => {
+    const projectId = store.get(sessionRecordByIdAtomFamily(capture.sessionId))?.projectId;
+    if (!projectId) {
+      showToast(t("projectIdeas.saveFromMessageUnavailable"), 3500);
+      return;
+    }
+    const text = capture.text.trim();
+    if (!text) return;
+    const firstLine = text.split(/\r?\n/, 1)[0]?.trim() ?? "";
+    const title = firstLine.length > 80 ? `${firstLine.slice(0, 77)}…` : firstLine;
+    openProjectIdeasModal(projectId, {
+      title: title || t("projectIdeas.new"),
+      body: text,
+      sessionId: capture.sessionId,
+      messageId: capture.messageId,
+      sourceKind: capture.sourceKind,
+    });
+  }, [openProjectIdeasModal, showToast, store]);
+
   const sessionPaneServices = useMemo(
     () => ({
       isLanWeb,
@@ -3661,6 +3695,7 @@ export function App() {
       editMessage,
       deleteMessage,
       forkFromUserMessage,
+      saveProjectIdea,
       forkingMessageId,
       openSidebarSessionById: (projectId: string, sessionId: string) =>
         openSidebarSessionByIdWithTab(projectId, sessionId, "permanent"),
@@ -3708,6 +3743,7 @@ export function App() {
       ensureSessionForSend,
       environmentDialog,
       forkFromUserMessage,
+      saveProjectIdea,
       forkingMessageId,
       handleOpenLinkedFile,
       insertQuickPrompt,
@@ -4514,6 +4550,18 @@ export function App() {
     <ScratchPadOverlay controller={scratchPad} />
 
     {/* 定时任务与自动化管理中心全功能弹窗（模态呈现，不覆盖会话工作区） */}
+    <ProjectIdeasModal
+      onContinue={(projectId, prompt) => {
+        void createSessionDraftWithTab(projectId)
+          .then((session) => {
+            if (session) setSessionDraft({ sessionId: session.id, value: prompt });
+          })
+          .catch((error: unknown) => {
+            showToast(error instanceof Error ? error.message : String(error), 5000);
+          });
+      }}
+    />
+
     <AutomationModal
       onViewSession={(projectId, sessionId) => {
         void openSidebarSessionByIdWithTab(projectId, sessionId, "permanent");

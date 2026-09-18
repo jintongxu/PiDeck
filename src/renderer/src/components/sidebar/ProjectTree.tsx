@@ -1,4 +1,4 @@
-import { ChevronRight, ChevronsDownUp, Ellipsis, Filter, Folder, FolderOpen, FolderPlus, Plus, RefreshCw } from "lucide-react";
+import { ChevronRight, ChevronsDownUp, Ellipsis, Filter, Folder, FolderOpen, FolderPlus, Lightbulb, Plus, RefreshCw } from "lucide-react";
 import type { DragEvent } from "react";
 import { useAtomValue } from "jotai";
 import type { Project, WorktreeEntry } from "../../../../shared/types";
@@ -33,8 +33,8 @@ const treeRowClass =
 /** 项目行右侧操作按钮的虚化模式：absolute 浮层，不参与布局（不挤压项目名文字），
  * 默认隐藏（pointer-events 一并关闭防误触），行 hover / 行内聚焦时显现。
  * 按钮浮层会盖住项目名：conversation-body 上 group-hover:pr-* 在 hover 时压出
- * 右侧留白——容器 right-1(4px) + pr-1(4px) + 三个 size-6 按钮(76px) + 8px 余量 = 92px，
- * 取 88px 让文本截断让位但保持可见（筛选 / + / ⋯ 共 3 个按钮常驻浮层）。
+ * 右侧留白——容器 right-1(4px) + pr-1(4px) + 四个 size-6 按钮(100px) + 8px 余量，
+ * 取 112px 让文本截断让位但保持可见（想法 / 筛选 / + / ⋯ 共 4 个按钮常驻浮层）。
  * 与 SessionTree/WorktreeTree 同一策略：所有宽度统一让位，不能只依赖窄侧栏断点
  * （中等宽度下长项目名同样会延伸到按钮下方，表现为 + / ⋯ 叠在项目名文字上）。
  * 2027-01 用户反馈：整行淡出到透明会导致标题不可读，必须点击激活才能看到文字；
@@ -163,9 +163,9 @@ export function ProjectTree(props: {
               {collapsed ? <Folder size={14} /> : <FolderOpen size={14} />}
             </span>
             <div
-              className="conversation-body min-w-0 flex-1 transition-[padding-right] group-hover:pr-[88px] group-focus-within:pr-[88px]"
+              className="conversation-body min-w-0 flex-1 transition-[padding-right] group-hover:pr-[112px] group-focus-within:pr-[112px]"
             >
-              {/* 筛选 / + / ⋯ 共 3 个按钮常驻浮层，hover 时统一让位 88px。
+              {/* 想法 / 筛选 / + / ⋯ 共 4 个按钮常驻浮层，hover 时统一让位 112px。
                   twMerge 语义见 tests/sidebarNarrowRowActions.test.mjs 契约测试。 */}
               <div className="conversation-title flex min-w-0 items-center">
                 {/* 项目名 + 运行态点合成一个截断单元：点紧跟文本而不是被 space-between
@@ -198,6 +198,19 @@ export function ProjectTree(props: {
             </div>
           </button>
           <div className={cn(dimmedActionsClass, "pr-1", props.controller.menu?.kind === "project" && props.controller.menu.projectId === project.id && "pointer-events-auto opacity-100")}>
+            {/* 项目想法入口：独立于会话树，避免把长期想法混入历史会话列表。 */}
+            <button
+              type="button"
+              className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground"
+              title={t("projectIdeas.title")}
+              aria-label={t("projectIdeas.title")}
+              onClick={(event) => {
+                event.stopPropagation();
+                props.actions.projects.manageIdeas(project.id);
+              }}
+            >
+              <Lightbulb size={12} />
+            </button>
             {/* 过滤历史记录入口：hover 常驻（右键菜单同款功能），筛选生效时高亮提示 */}
             <button
               type="button"

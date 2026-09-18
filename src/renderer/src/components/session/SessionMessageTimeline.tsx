@@ -3,7 +3,7 @@ import { selectAtom } from "jotai/utils";
 import { useReducedMotion } from "motion/react";
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
 import type { ComponentProps, ReactNode, RefObject } from "react";
-import type { ChatMessage, ImageContent } from "../../../../shared/types";
+import type { ChatMessage, ImageContent, ProjectIdeaCapture } from "../../../../shared/types";
 import { MarkdownStream } from "./MarkdownStream";
 import { replaceExpandedRefBlocksWithLabels } from "./composer/quoteChip";
 import { Button } from "../ui-shadcn/button";
@@ -130,6 +130,7 @@ type TimelineInteractionProps = {
   onDeleteMessage?: TurnRowProps["onDeleteMessage"];
   onForkMessage?: UserBubbleProps["onForkMessage"];
   onRewindToMessage?: UserBubbleProps["onRewindToMessage"];
+  onSaveProjectIdea?: (capture: ProjectIdeaCapture) => void;
   forkingMessageId?: string | null;
   onToast: (message: string) => void;
   /** 新建 Agent 的空时间线快捷操作：只写入 composer，不自动投递。 */
@@ -169,6 +170,9 @@ export function SessionMessageTimeline(props: SessionMessageTimelineProps) {
   const sendState = useAtomValue(sendStateSelector);
   const controller = props.controller;
   const timelineRef = props.timelineRef ?? controller.timelineRef;
+  const saveProjectIdea = useCallback((capture: Omit<ProjectIdeaCapture, "sessionId">) => {
+    props.onSaveProjectIdea?.({ ...capture, sessionId });
+  }, [props.onSaveProjectIdea, sessionId]);
   const activeMessages = controller.messages;
   const paginatedMessages = controller.visibleMessages;
 	const totalMessageCount = controller.totalMessageCount;
@@ -1017,6 +1021,7 @@ export function SessionMessageTimeline(props: SessionMessageTimelineProps) {
                     onDiffFile={props.onDiffFile}
                     onEditMessage={props.onEditMessage}
                     onDeleteMessage={props.onDeleteMessage}
+                    onSaveProjectIdea={saveProjectIdea}
                     onEnterMultiSelect={handleEnterMultiSelect}
                   />
                 );
@@ -1037,6 +1042,7 @@ export function SessionMessageTimeline(props: SessionMessageTimelineProps) {
                     onDeleteMessage={props.onDeleteMessage}
                     onForkMessage={props.onForkMessage}
                     onRewindToMessage={props.onRewindToMessage}
+                    onSaveProjectIdea={(capture) => saveProjectIdea(capture)}
                     forking={props.forkingMessageId === message.id}
                     agentRunning={isRuntimeBusy}
                     isLastUserMessage={message.id === lastUserMessageId}
@@ -1124,6 +1130,7 @@ export function SessionMessageTimeline(props: SessionMessageTimelineProps) {
           quote={selectionQuote}
           sessionId={sessionId}
           onConsume={clearSelectionQuote}
+          onSaveProjectIdea={(capture) => saveProjectIdea(capture)}
         />
       )}
     </MessageScroller>

@@ -141,6 +141,9 @@ import type {
 	SkillContentResult,
 	Project,
 	ProjectFileAccessScope,
+	ProjectIdea,
+	CreateProjectIdeaInput,
+	UpdateProjectIdeaInput,
 	PromptStoreSearchResult,
 	PromptStoreItem,
 	ScratchPadData,
@@ -270,6 +273,16 @@ const api = {
 		// 设置聊天记录目录
 		setChatPath: (path: string) =>
 			ipcRenderer.invoke(ipcChannels.projectsSetChatPath, path) as Promise<Project | null>,
+		ideas: {
+			list: (projectId: string) =>
+				ipcRenderer.invoke(ipcChannels.projectIdeasList, projectId) as Promise<ProjectIdea[]>,
+			create: (input: CreateProjectIdeaInput) =>
+				ipcRenderer.invoke(ipcChannels.projectIdeasCreate, input) as Promise<ProjectIdea>,
+			update: (id: string, projectId: string, patch: UpdateProjectIdeaInput) =>
+				ipcRenderer.invoke(ipcChannels.projectIdeasUpdate, id, projectId, patch) as Promise<ProjectIdea>,
+			delete: (id: string, projectId: string) =>
+				ipcRenderer.invoke(ipcChannels.projectIdeasDelete, id, projectId) as Promise<boolean>,
+		},
 		// 通过 pi --list-models 获取可用模型列表（无需启动 agent）
 		listModels: (projectId?: string) =>
 			ipcRenderer.invoke(ipcChannels.projectsListModels, projectId) as Promise<

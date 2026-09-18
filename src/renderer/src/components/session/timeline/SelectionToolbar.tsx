@@ -1,7 +1,7 @@
-import { useMemo } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { createPortal } from "react-dom";
 import { useAtomValue, useSetAtom } from "jotai";
-import { Quote } from "lucide-react";
+import { Lightbulb, Quote } from "lucide-react";
 import {
 	sessionDraftByIdAtom,
 	setSessionDraftAtom,
@@ -17,10 +17,11 @@ import {
 } from "../composer/quoteChip";
 import { computeToolbarPosition } from "./selectionToolbarPolicy";
 import type { TimelineSelectionQuote } from "../../../hooks/useTimelineSelection";
+import type { ProjectIdeaCapture } from "../../../../../shared/types";
 import { t } from "../../../i18n";
 
 /** 浮层按钮尺寸估算（与 computeToolbarPosition 的入参一致；宽度自适应文案，取中值估计） */
-const TOOLBAR_WIDTH = 104;
+const TOOLBAR_WIDTH = 220;
 const TOOLBAR_HEIGHT = 28;
 
 /**
@@ -34,24 +35,52 @@ export function SelectionToolbar(props: {
 	quote: TimelineSelectionQuote | null;
 	sessionId: string;
 	onConsume: () => void;
+	onSaveProjectIdea?: (capture: Omit<ProjectIdeaCapture, "sessionId">) => void;
 }) {
 	const drafts = useAtomValue(sessionDraftByIdAtom);
 	const setDraft = useSetAtom(setSessionDraftAtom);
 	const setQuotes = useSetAtom(setSessionQuotesAtom);
 	const quote = props.quote;
+	const consumedQuoteKeyRef = useRef<string | null>(null);
+	const [consumedQuoteKey, setConsumedQuoteKey] = useState<string | null>(null);
+	const quoteKey = quote ? `${props.sessionId}:${quote.messageId}:${quote.text}` : null;
+	const consumeQuote = () => {
+		if (!quoteKey || consumedQuoteKeyRef.current === quoteKey) return false;
+		consumedQuoteKeyRef.current = quoteKey;
+		setConsumedQuoteKey(quoteKey);
+		return true;
+	};
+
+	useEffect(() => {
+		if (quoteKey) return;
+		consumedQuoteKeyRef.current = null;
+		setConsumedQuoteKey(null);
+	}, [quoteKey]);
 
 	const position = useMemo(() => {
 		if (!quote) return null;
 		return computeToolbarPosition(
 			quote.rect,
 			{ width: window.innerWidth, height: window.innerHeight },
-			{ width: TOOLBAR_WIDTH, height: TOOLBAR_HEIGHT },
+			{ width: props.onSaveProjectIdea ? TOOLBAR_WIDTH : 104, height: TOOLBAR_HEIGHT },
 		);
-	}, [quote]);
+	}, [props.onSaveProjectIdea, quote]);
 
 	if (!quote || !position) return null;
 
+	const handleSaveIdea = () => {
+		if (!consumeQuote()) return;
+		props.onSaveProjectIdea?.({
+			text: quote.text,
+			messageId: quote.messageId,
+			sourceKind: "selection",
+		});
+		window.getSelection()?.removeAllRanges();
+		props.onConsume();
+	};
+
 	const handleInsert = () => {
+		if (!consumeQuote()) return;
 		const snippet: QuoteSnippet = {
 			id: createQuoteId(),
 			text: quote.text,
@@ -85,16 +114,31 @@ export function SelectionToolbar(props: {
 	};
 
 	return createPortal(
-		<button
-			type="button"
-			// 紧凑工具条（Codex 同款形态）：悬浮卡片 + 毛玻璃，hover 微亮、按下微缩
-			className="fixed z-[80] inline-flex h-7 cursor-pointer items-center gap-1 rounded-lg border border-border-subtle bg-bg-panel/90 px-2 text-caption font-medium text-text-primary shadow-[0_6px_20px_rgba(0,0,0,0.16)] backdrop-blur-md transition-[background-color,border-color] duration-150 hover:border-border hover:bg-bg-hover"
+		<div
+			className="fixed z-[80] inline-flex items-center gap-1 rounded-lg border border-border-subtle bg-bg-panel/90 p-0.5 shadow-[0_6px_20px_rgba(0,0,0,0.16)] backdrop-blur-md"
 			style={{ top: position.top, left: position.left }}
-			onClick={handleInsert}
 		>
-			<Quote size={13} className="shrink-0 text-text-secondary" aria-hidden="true" />
-			<span className="whitespace-nowrap">{t("app.quoteAddToPrompt")}</span>
-		</button>,
+			<button
+				type="button"
+				disabled={consumedQuoteKey === quoteKey}
+				className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-caption font-medium text-text-primary transition-[background-color,border-color] duration-150 hover:bg-bg-hover disabled:pointer-events-none disabled:opacity-50"
+				onClick={handleInsert}
+			>
+				<Quote size={13} className="shrink-0 text-text-secondary" aria-hidden="true" />
+				<span className="whitespace-nowrap">{t("app.quoteAddToPrompt")}</span>
+			</button>
+			{props.onSaveProjectIdea && (
+				<button
+					type="button"
+					disabled={consumedQuoteKey === quoteKey}
+					className="inline-flex h-7 cursor-pointer items-center gap-1 rounded-md px-2 text-caption font-medium text-text-primary transition-[background-color,border-color] duration-150 hover:bg-bg-hover disabled:pointer-events-none disabled:opacity-50"
+					onClick={handleSaveIdea}
+				>
+					<Lightbulb size={13} className="shrink-0 text-text-secondary" aria-hidden="true" />
+					<span className="whitespace-nowrap">{t("projectIdeas.saveFromSelection")}</span>
+				</button>
+			)}
+		</div>,
 		document.body,
 	);
 }

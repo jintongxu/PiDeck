@@ -171,6 +171,7 @@ export function createBrowserApi(): PiDesktopApi {
 		voiceTranscription: base.voiceTranscription,
 		projects: {
 			...base.projects,
+			ideas: base.projects.ideas,
 			list: async () => {
 				try {
 					return (await refreshState()).projects;

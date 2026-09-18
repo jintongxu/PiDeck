@@ -33,6 +33,7 @@ import {
 } from "../../rendererUtils";
 import { projectByIdAtomFamily, sessionRecordByIdAtomFamily } from "../../atoms";
 import type { EnqueuePromptSnapshot } from "../../hooks/useSessionSend";
+import type { ProjectIdeaCapture } from "../../../../shared/types";
 import { groupToolMessages } from "../app/AppUtils";
 import type { AgentRunItem } from "./timeline/types";
 import { countUserTurns } from "./timeline/turnRenderWindow";
@@ -81,6 +82,7 @@ export type SessionViewProps = {
   onDeleteMessage?: (messageId: string, entryId?: string) => void;
   onForkMessage?: (message: any) => void;
   onRewindToMessage?: (message: any) => void;
+  onSaveProjectIdea?: (capture: ProjectIdeaCapture) => void;
   forkingMessageId?: string | null;
   onToast: (message: string) => void;
   onQuickPrompt?: (prompt: string) => void;
@@ -150,6 +152,7 @@ export function SessionView({
   onDeleteMessage,
   onForkMessage,
   onRewindToMessage,
+  onSaveProjectIdea,
   forkingMessageId,
   onToast,
   onQuickPrompt,
@@ -328,6 +331,7 @@ export function SessionView({
                 onDeleteMessage,
                 onForkMessage,
                 onRewindToMessage,
+                onSaveProjectIdea,
                 forkingMessageId,
                 onToast,
                 onQuickPrompt,

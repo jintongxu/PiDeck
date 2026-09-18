@@ -133,6 +133,7 @@ import {
 	Send,
 	UserPen,
 	GitFork,
+	Lightbulb,
 	LoaderCircle,
 	Sparkles,
 	MessageSquare,
@@ -172,6 +173,7 @@ import type {
 	PiInstallStatus,
 	PiUpdateCheckResult,
 	Project,
+	ProjectIdeaCapture,
 	SessionSummary,
 	VisionBridgeEvent,
 	VisionEventsInfo,
@@ -796,6 +798,7 @@ export const UserBubble = memo(function UserBubble(props: {
 	onForkMessage?: (message: ChatMessage) => void;
 	/** 回退工作区文件到该消息时刻前最近的检查点；仅 pi 后端注入（rewind 能力） */
 	onRewindToMessage?: (message: ChatMessage) => void;
+	onSaveProjectIdea?: (capture: Omit<ProjectIdeaCapture, "sessionId">) => void;
 	/** 是否为最后一条用户消息，用于控制重发按钮的显隐 */
 	isLastUserMessage?: boolean;
 	/** 仅当该消息后出现 error/abort 时显示重发（取代无条件 isLastUserMessage） */
@@ -1208,6 +1211,19 @@ export const UserBubble = memo(function UserBubble(props: {
 				>
 					<Share size={14} />
 				</Button>
+				{props.onSaveProjectIdea && (
+					<Button
+						type="button"
+						variant="ghost"
+						size="icon-sm"
+						className="user-turn-action-btn size-7 rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+						onClick={() => props.onSaveProjectIdea?.({ text: cleanText, messageId: message.id, sourceKind: "message" })}
+						title={t("projectIdeas.saveFromMessage")}
+						aria-label={t("projectIdeas.saveFromMessage")}
+					>
+						<Lightbulb size={14} />
+					</Button>
+				)}
 				{/* fork 忙碌时也不隐藏、仅禁用：入口稳定可见，避免用户误以为「时有时无」 */}
 				{!editing && canFork && (
 					<Button

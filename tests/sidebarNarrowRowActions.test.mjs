@@ -27,15 +27,15 @@ test("sidebar host needs no container query anchor", () => {
 
 test("project row text yields to the hover action buttons at any width", () => {
 	const src = read("src/renderer/src/components/sidebar/ProjectTree.tsx");
-	// 项目名 conversation-body：hover 压出 88px 留白——浮层 right-1(4) + pr-1(4) +
-	// 三个 size-6 按钮（筛选 / + / ⋯，76px）+ 8px 余量；聚焦态（键盘导航）同样让位；
+	// 项目名 conversation-body：hover 压出 112px 留白——浮层 right-1(4) + pr-1(4) +
+	// 四个 size-6 按钮（想法 / 筛选 / + / ⋯，100px）+ 8px 余量；聚焦态（键盘导航）同样让位；
 	// transition 只动画 padding-right。
 	// 所有宽度统一让位，不能只依赖窄侧栏断点，否则中等宽度下按钮会叠在长项目名上。
 	assert.match(
 		src,
-		/conversation-body min-w-0 flex-1 transition-\[padding-right\] group-hover:pr-\[88px\] group-focus-within:pr-\[88px\]/,
+		/conversation-body min-w-0 flex-1 transition-\[padding-right\] group-hover:pr-\[112px\] group-focus-within:pr-\[112px\]/,
 	);
-	// 过滤历史记录按钮 hover 常驻（不再只在筛选激活时出现），筛选激活时高亮
+	// 项目想法按钮与过滤历史记录按钮均 hover 常驻，筛选激活时高亮
 	assert.match(src, /openSourceFilter\(project\.id, event\.clientX, event\.clientY\)/);
 	assert.match(src, /sourceFilter !== null\s*\?\s*"text-primary"/);
 	// 旧的 64px（两按钮时代）与 116px/窄侧栏断点不得回退
@@ -100,10 +100,10 @@ test("hover yield classes survive tailwind-merge", () => {
 	// 项目行筛选按钮出现时：同修饰键同组冲突，88px 版本应胜出（让位加宽）
 	const filtered = twMerge(
 		"transition-[padding-right] group-hover:pr-16 group-focus-within:pr-16",
-		"group-hover:pr-[88px] group-focus-within:pr-[88px]",
+		"group-hover:pr-[112px] group-focus-within:pr-[112px]",
 	);
-	assert.match(filtered, /group-hover:pr-\[88px\]/);
-	assert.match(filtered, /group-focus-within:pr-\[88px\]/);
+	assert.match(filtered, /group-hover:pr-\[112px\]/);
+	assert.match(filtered, /group-focus-within:pr-\[112px\]/);
 	assert.doesNotMatch(filtered, /pr-16/);
 	// 子行同一规则：与 52px 让位类合并时同样保留
 	const rowMerged = twMerge(

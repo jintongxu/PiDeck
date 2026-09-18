@@ -1,3 +1,12 @@
+## v0.7.7 - 2026-09-18
+
+### 🚀 New Features
+- **Project ideas inbox** — Capture project-scoped ideas locally in PiDeck with a lightweight Inbox / Planned / Doing / Done workflow, tags, editing, filtering, deletion, and a safe “continue in a new session” action.
+- **Save ideas from conversations** — Save a full session message or selected message text as a project idea; the editor is prefilled with a title and body and keeps the source session/message association for later reference.
+
+### 🐛 Fixes
+- **Windows release validation** — The Windows directory build and release packaging path are verified for the new project-ideas workflow.
+
 ## v0.7.6 - 2026-09-17
 
 ### 🚀 New Features

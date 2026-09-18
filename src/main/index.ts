@@ -240,6 +240,7 @@ import type {
 } from "../shared/types";
 import { msUntilNextThemeBoundary, resolveAppColorScheme } from "../shared/themeSchedule";
 import { ProjectStore } from "./projects/ProjectStore";
+import { ProjectIdeaStore } from "./projects/ProjectIdeaStore";
 import { shouldAutoRegisterForeignCwd } from "./projects/projectPathPolicy";
 import { defaultPathCheck } from "./projects/projectPresence";
 import { FileSystemService } from "./fs/FileSystemService";
@@ -424,6 +425,7 @@ let isQuitting = false;
  *  非正常崩溃自动 reload 恢复，崩溃风暴（60s 内超 2 次）放弃。 */
 const rendererCrashGuard = createRendererCrashRecoveryGuard();
 let projectStore: ProjectStore;
+let projectIdeaStore: ProjectIdeaStore;
 let fileSystemService: FileSystemService;
 let sessionScanner: SessionScanner;
 let sessionCatalog: SessionCatalog;
@@ -2470,6 +2472,7 @@ function registerIpc() {
 	registerBackgroundsIpc();
 	registerProjectsIpc({
 		projectStore,
+		projectIdeaStore,
 		settingsStore,
 		gitService,
 		worktreeService,
@@ -3241,6 +3244,10 @@ app.whenReady().then(async () => {
 	if (singleInstanceEnabled && !gotSingleInstanceLock) return;
 
 	projectStore = new ProjectStore(() => mainCopy("dialog.chooseProjectFolder"));
+	projectIdeaStore = new ProjectIdeaStore(join(app.getPath("userData"), "project-ideas.json"));
+	void projectIdeaStore.load().catch((error: unknown) => {
+		console.error("Failed to load project ideas:", error);
+	});
 	fileSystemService = new FileSystemService();
 	sessionScanner = new SessionScanner(mainCopy);
 	codexSessionImporter = new CodexSessionImporter(mainCopy);

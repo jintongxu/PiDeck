@@ -79,25 +79,12 @@
 
 ## 📋 Changelog
 
-> **Latest: v0.7.6** (2026-09-17)
+> **Latest: v0.7.7** (2026-09-18)
 
-### v0.7.6 Release Highlights
-- 🚀 **Customizable global shortcuts**
-- 🚀 **Ctrl/Cmd+P command palette**
-- 🚀 **Hot updates for official prompt templates and built-in skills**
-- 🚀 **WB enhancement prompt templates in the store**
-- 🚀 **Project-scoped scheduled tasks, management as a modal**
-- 🚀 **Session tab “current session actions”**
-- 🚀 **Context menu for file path links in sessions**
-- 🚀 **Copy the agent ID from sidebar and tab menus**
-- 🚀 **DSH permission button unified with the pi security-level menu (#214)**
-- 🚀 **Ask cards submit on Enter**
-- 🚀 **Import Cursor Agent sessions**
-- 🚀 **Official installer no longer ships DSH runtime**
-- ✨ **Image-gen sessions no longer OOM the renderer from inline base64**
-- ✨ **Layered renderer OOM controls**
-- ✨ **Resident caches gain byte budgets**
-- ✨ **Huge sessions no longer fail to open or crash the app**
+### v0.7.7 Release Highlights
+- 🚀 **Project ideas inbox**
+- 🚀 **Save ideas from conversations**
+- ✨ **Windows release validation**
 
 [View Full Changelog →](CHANGELOG.md)
 

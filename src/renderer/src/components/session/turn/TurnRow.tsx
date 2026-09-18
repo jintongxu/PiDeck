@@ -2,10 +2,10 @@ import {
   messageEntryId,
 } from "../../../utils/sessionCommands";
 import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronUp, Clock, Share, SquarePen, Trash } from "lucide-react";
+import { ChevronUp, Clock, Lightbulb, Share, SquarePen, Trash } from "lucide-react";
 import { atom, useAtomValue, useSetAtom } from "jotai";
 import { selectAtom } from "jotai/utils";
-import type { AgentBackend, ImageContent } from "../../../../../shared/types";
+import type { AgentBackend, ImageContent, ProjectIdeaCapture } from "../../../../../shared/types";
 import { liveTextActiveBySessionAtom, newTurnCollapseTickBySessionIdAtomFamily, runStepsVisibleMemoryBySessionIdAtomFamily, type RunStepsVisibleMemoryEntry } from "../../../atoms/session-atoms";
 import { turnFlowSettingsAtom } from "../../../atoms/app-ui-atoms";
 import { t } from "../../../i18n";
@@ -72,6 +72,7 @@ export type TurnRowProps = {
 	onResendUserMessage?: (message: never) => void;
 	onEditMessage?: (messageId: string, newText: string, entryId?: string) => void;
 	onDeleteMessage?: (messageId: string, entryId?: string) => void;
+	onSaveProjectIdea?: (capture: ProjectIdeaCapture) => void;
 	/** 当前模型回合活跃时为 true，驱动正文/过程的 live 渲染与完成判定。 */
 	agentRunning?: boolean;
 	/** 会话 runtime 仍被占用（如压缩）；仅阻止会改写历史的操作，不把已结束回答重置为 live。 */
@@ -464,6 +465,19 @@ export const TurnRow = memo(
 							markdown={mergedText}
 							targetRef={rowRef}
 						/>}
+						{props.onSaveProjectIdea && (
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-sm"
+								className="turn-row-action-btn size-7 rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+								onClick={() => props.onSaveProjectIdea?.({ sessionId: props.sessionId ?? "", text: mergedText, messageId: assistantMessages.at(-1)?.message.id, sourceKind: "message" })}
+								title={t("projectIdeas.saveFromMessage")}
+								aria-label={t("projectIdeas.saveFromMessage")}
+							>
+								<Lightbulb size={14} />
+							</Button>
+						)}
 						<Button
 							type="button"
 							variant="ghost"
@@ -543,6 +557,7 @@ turnRowPropsEqual,
  * - onOpenFile：栏级 cwd/project 变化时引用会更新，必须参与比较，否则历史工具按钮会继续调用旧栏上下文；
  * - 其余回调函数（onPreviewImage/onOpenExternal/onDiffFile/onEditMessage/onDeleteMessage/
  *   onEnterMultiSelect）：行为稳定（读 ref/setState），引用变化不影响渲染结果，忽略（同 FinalAnswer 惯例）。
+ * - onSaveProjectIdea 参与比较，避免历史行持有旧的项目上下文保存回调。
  */
 function turnRowPropsEqual(prev: TurnRowProps, next: TurnRowProps): boolean {
 	// 流式 run：Live AnswerOutput 随 atom 更新；父级仍需在 isStreaming 边沿重渲染折叠态。
@@ -560,6 +575,7 @@ function turnRowPropsEqual(prev: TurnRowProps, next: TurnRowProps): boolean {
 		prev.isLatestRun === next.isLatestRun &&
 		prev.isLastAgentRun === next.isLastAgentRun &&
 		prev.autoCollapseTick === next.autoCollapseTick &&
-		prev.onOpenFile === next.onOpenFile
+		prev.onOpenFile === next.onOpenFile &&
+		prev.onSaveProjectIdea === next.onSaveProjectIdea
 	);
 }
