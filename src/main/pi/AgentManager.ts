@@ -127,6 +127,7 @@ import {
 	inferTitleFromMessages,
 	isDefaultAgentTitle,
 	looksLikePiSessionFileStem,
+	isAbortErrorMessage,
 	shouldReloadMessagesAfterCompaction,
 } from "./agentUtils";
 import {
@@ -527,6 +528,8 @@ export class AgentManager {
 	private onTitleChanged?: (agentId: string, title: string) => void;
 	/** 已发送 ask 系统通知的 agent；新一轮 run（agent_start）时清除，避免同一轮多次提问刷屏。 */
 	private readonly notifiedAskAgents = new Set<string>();
+	/** 已发送 abort 系统通知的 agent；同一轮 abort/迟到事件只通知一次。 */
+	private readonly notifiedAbortAgents = new Set<string>();
 	/** 待处理的项目信任确认请求。key 为 requestId，用于在 Agent 启动前等待用户的信任决策。 */
 	private readonly pendingTrustRequests = new Map<string, { resolve: (choice: ProjectTrustChoice) => void }>();
 	private wslEnvironment: WslEnvironment | null = null;
@@ -3570,6 +3573,7 @@ export class AgentManager {
 		this.messagePerfByAgent.delete(agentId);
 		this.lastPerfByAgent.delete(agentId);
 		this.notifiedAskAgents.delete(agentId);
+		this.notifiedAbortAgents.delete(agentId);
 		this.abortedDuringAsk.delete(agentId);
 		this.pendingAbortEscalations.delete(agentId);
 		this.lastAbortAtByAgent.delete(agentId);
@@ -4919,6 +4923,7 @@ export class AgentManager {
 			// 上一轮的 abort 升级上下文随之作废（新一轮 run 与上次终止无关）
 			this.pendingAbortEscalations.delete(agentId);
 			this.notifiedAskAgents.delete(agentId);
+			this.notifiedAbortAgents.delete(agentId);
 			this.openAgentStream(agentId);
 			this.setAgentTurnActive(agentId, true);
 			// rewind 回合计数：每轮 run 递增一次，供文件自动打点标记 turnIndex。
@@ -5112,9 +5117,12 @@ export class AgentManager {
 			// 用户主动 abort 的回合偶发携带错误文本（工具被 abort_bash 杀掉、abort 与
 			// 工具事件交错等）：终止不应该把仍存活的进程标成终态 error，否则下次激活
 			// 会被当成启动失败或杀掉重建（Issue #218「终止恢复有些特殊情况进程被杀掉」）。
-			// 错误卡片照常保留，状态交给 agent_settled 收敛回 idle。
+			// abort 的错误文本仅用于日志与系统通知，不应再落成错误诊断卡；状态交给
+			// agent_settled 收敛回 idle。
 			const abortedTurn =
-				typed.stopReason === "aborted" || this.recentlyAborted.has(agentId);
+				typed.stopReason === "aborted" ||
+				this.recentlyAborted.has(agentId) ||
+				(typeof errorMsg === "string" && isAbortErrorMessage(errorMsg));
 			if (typed.willRetry === true) {
 				// agent_end.willRetry 表示 pi 已判定本次错误会进入自动重试；
 				// 此时不写入最终错误，避免用户误以为会话已经失败。
@@ -5133,32 +5141,50 @@ export class AgentManager {
 				// 重试中保持 running，不能误置为 idle/error，否则宠物聚合状态会提前转 done/failed
 				if (runtime) runtime.tab.status = "running";
 			} else if (errorMsg) {
-				this.addDetailedErrorMessage(agentId, String(errorMsg));
+				if (abortedTurn) {
+					// Pi 的 abort 有时以 stopReason=error + AbortError 文案结束；这是
+					// 用户主动停止/steer 的正常收口，不应生成错误诊断卡。
+					this.notifyAgentAborted(agentId);
+				} else {
+					this.addDetailedErrorMessage(agentId, String(errorMsg));
+				}
 				// 有错误且不会重试 → Agent 进入 error 态，宠物聚合为 failed（行5），
 				// 否则会被误置为 idle 触发"所有任务完成"通知。
 				// 例外：用户主动 abort 的回合不置终态（进程还活着，见上方 abortedTurn 注释）。
 				if (runtime && !abortedTurn) runtime.tab.status = "error";
 				// agent_end 携带错误且不重试：错误原文（API 400/模型报错等）必须进 applog，
 				// 会话气泡只面向用户，排查时依赖这里的结构化记录。
-				void this.appLogger?.error("agent", "Agent run ended with error", {
+				void (abortedTurn ? this.appLogger?.warn("agent", "Agent run aborted", {
 					agentId,
 					error: String(errorMsg),
 					stopReason: typed.stopReason,
-				});
+				}) : this.appLogger?.error("agent", "Agent run ended with error", {
+					agentId,
+					error: String(errorMsg),
+					stopReason: typed.stopReason,
+				}));
 			} else if (
 				typed.stopReason === "error" ||
 				errorMessages.length > 0
 			) {
-				this.addDetailedErrorMessage(agentId);
+				if (abortedTurn) {
+					this.notifyAgentAborted(agentId);
+				} else {
+					this.addDetailedErrorMessage(agentId);
+				}
 				// 与上一分支同款 abort 例外：终止回合不把活进程标成终态。
 				if (runtime && !abortedTurn) runtime.tab.status = "error";
 				// 与上一分支同款留痕：无显式错误文本时也记下 stopReason 与最后一条
 				// error 消息的 errorMessage，避免「会话失败但原因未知」完全不可追溯。
-				void this.appLogger?.error("agent", "Agent run ended with error", {
+				void (abortedTurn ? this.appLogger?.warn("agent", "Agent run aborted", {
 					agentId,
 					error: topMsg?.errorMessage ?? typed.error ?? typed.stopReason,
 					stopReason: typed.stopReason,
-				});
+				}) : this.appLogger?.error("agent", "Agent run ended with error", {
+					agentId,
+					error: topMsg?.errorMessage ?? typed.error ?? typed.stopReason,
+					stopReason: typed.stopReason,
+				}));
 			}
 			if (runtime) this.emitState();
 			// agent_end 后 runtimeState 可能暂时仍显示后续 compaction/retry；立即同步一次，
@@ -6720,6 +6746,39 @@ export class AgentManager {
 	 * 通知用户 agent 已完成响应，可以查看结果或继续对话；
 	 * 点击通知会聚焦主窗口并切换到对应会话。
 	 */
+	private notifyAgentAborted(agentId: string): void {
+		try {
+			const settings = this.settingsStore.get();
+			if (!settings.enableNotifications) return;
+			if (!Notification.isSupported()) return;
+			if (this.notifiedAbortAgents.has(agentId)) return;
+			this.notifiedAbortAgents.add(agentId);
+			const runtime = this.agents.get(agentId);
+			const appName = app.getName();
+			const title = runtime?.tab.title || appName;
+			const body = this.translate("mainNotification.aborted", { title });
+			const sessionId = resolveNotificationSessionId(
+				this.resolveSessionId ? () => this.resolveSessionId!(agentId) : undefined,
+				runtime?.tab.sessionId,
+			);
+			const notification = new Notification({
+				title: appName,
+				body,
+				silent: false,
+				toastXml: this.buildToastXml(appName, body, sessionId),
+			});
+			notification.on("click", () => {
+				this.focusMainWindowForSession(sessionId);
+			});
+			notification.on("failed", (_event, error) => {
+				void this.appLogger?.warn("agent", "Abort notification failed to show", { agentId, error: String(error) });
+			});
+			notification.show();
+		} catch {
+			// Notification failure must not affect abort settlement.
+		}
+	}
+
 	private notifySessionEnd(agentId: string, sessionTitle: string) {
 		try {
 			const settings = this.settingsStore.get();

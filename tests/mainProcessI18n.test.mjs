@@ -20,6 +20,8 @@ test("main-process copy resolves locale and interpolates stable product text", (
   assert.equal(normalizeMainProcessLocale("en-GB"), "en-US");
   assert.equal(normalizeMainProcessLocale("de-DE"), "zh-CN");
   assert.equal(mainProcessT("en-US", "tray.showWindow"), "Show window");
+  assert.equal(mainProcessT("en-US", "mainNotification.aborted", { title: "Session" }), "Session stopped the current response");
+  assert.equal(mainProcessT("zh-CN", "mainNotification.aborted", { title: "会话" }), "会话已中止当前响应");
   assert.equal(mainProcessT("en-US", "pet.switch"), "Switch pet");
   assert.equal(
     mainProcessT("en-US", "session.historyTitle", { project: "PiDeck" }),
@@ -180,6 +182,7 @@ test("AgentManager user-visible runtime diagnostics carry i18n descriptors", () 
     "diagnostic.retryScheduledAfterDelay",
     "diagnostic.retrySucceeded",
     "diagnostic.retryFailed",
+    "mainNotification.aborted",
   ]) {
     assert.match(manager, new RegExp(`"${key.replaceAll(".", "\\.")}"`));
   }

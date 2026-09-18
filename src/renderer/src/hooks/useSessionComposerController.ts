@@ -505,6 +505,9 @@ export function useSessionComposerController(
     return mergePromptHistory(runtimeHistory, sessionHistory);
   }, [sessionId, store]);
   const lastEditorTextEnvelopeRef = useRef("");
+  // SSH 控制请求只允许单飞：密码框/主机选择是同一个 RPC 流程，重复点击会
+  // 并发解锁同一份加密 store，第二个请求可能误报密码错误。
+  const sshControlInFlightRef = useRef(false);
   const [cursor, setCursor] = useState(0);
   const [suggestionsOpen, setSuggestionsOpen] = useState(false);
   const [selectedSuggestionIndex, setSelectedSuggestionIndex] = useState(0);
@@ -1039,6 +1042,8 @@ export function useSessionComposerController(
    * 压缩中拒绝重复点击；成功弹完成。
    */
   const openSsh = useCallback(async () => {
+    if (sshControlInFlightRef.current) return;
+    sshControlInFlightRef.current = true;
     try {
       const targetSessionId = ensureSessionId ? await ensureSessionId(sessionId) : sessionId;
       requireSessionCommand(await desktopApi.sessions.activateRuntime(targetSessionId));
@@ -1052,6 +1057,8 @@ export function useSessionComposerController(
       if (!result.accepted) throw new Error(result.error ?? "SSH host selection failed");
     } catch (error) {
       showNotice(error instanceof Error ? error.message : String(error), 4000);
+    } finally {
+      sshControlInFlightRef.current = false;
     }
   }, [ensureSessionId, sessionId]);
 

@@ -43,3 +43,39 @@ test("agent_end keeps the logical turn closed while runtime bookkeeping continue
 		"a later compaction/idle check must not reopen the completed answer turn",
 	);
 });
+
+test("abort-shaped agent_end skips the error diagnostic and emits an abort notice", () => {
+	const manager = createRuntimeHarness();
+	let diagnostics = 0;
+	let abortNotices = 0;
+	manager.addDetailedErrorMessage = () => { diagnostics += 1; };
+	manager.notifyAgentAborted = () => { abortNotices += 1; };
+
+	manager.handlePiEvent("agent-1", {
+		type: "agent_end",
+		stopReason: "error",
+		errorMessage: "This operation was aborted",
+		messages: [],
+	});
+
+	assert.equal(diagnostics, 0, "an abort must not become diagnostic.requestFailed");
+	assert.equal(abortNotices, 1, "an abort must notify through the notification path");
+});
+
+test("genuine agent_end errors still create the error diagnostic", () => {
+	const manager = createRuntimeHarness();
+	let diagnostics = 0;
+	let abortNotices = 0;
+	manager.addDetailedErrorMessage = () => { diagnostics += 1; };
+	manager.notifyAgentAborted = () => { abortNotices += 1; };
+
+	manager.handlePiEvent("agent-1", {
+		type: "agent_end",
+		stopReason: "error",
+		errorMessage: "Provider returned HTTP 500",
+		messages: [],
+	});
+
+	assert.equal(diagnostics, 1);
+	assert.equal(abortNotices, 0);
+});

@@ -19,20 +19,24 @@ const sidebar = readFileSync(
 test("v3 sidebar bottom actions render inside a full-width beUI Dock", () => {
   assert.match(sidebar, /import \{ Dock, DockItem \} from "\.\.\/motion\/dock";/);
   assert.match(sidebar, /<Dock size=\{32\} className="w-full justify-between">/);
-  // 4 项 = 3 个动作（设置/反馈/主题）+ 1 个公告中心入口。官网按钮已并入侧栏顶部的
-  // AboutPopover（关于弹框，faf93859），不再占用 dock 空间。
-  assert.equal((sidebar.match(/<DockItem>/g) || []).length, 4);
+  // 5 项 = 设置/公告/官网/反馈/主题，保持历史 Dock 布局。
+  assert.equal((sidebar.match(/<DockItem>/g) || []).length, 5);
+  assert.match(sidebar, /announcementEnabled \? \([\s\S]*?<DockItem>[\s\S]*?<AnnouncementCenter \/>[\s\S]*?<\/DockItem>[\s\S]*?\) : null/);
 });
 
-test("dock keeps the three actions and delegates the homepage link to AboutPopover", () => {
+test("dock keeps settings, announcements, homepage, feedback, and theme actions", () => {
   const dockBlock = sidebar.slice(sidebar.indexOf("<Dock size={32}"));
   // 设置按钮：更新角标场景的文案进 aria-label（读屏/键盘），可见解释由 Tooltip 清单承担；
   // 首次解释气泡改挂 dock 行容器（与 Dock 同级），不再寄生在 DockItem 内（锚定契约见
   // updateDotHintAnchor.test.mjs）——它在 dockBlock 之外、行容器内。
   assert.match(sidebar, /<UpdateDotHint hasPendingUpdate=\{hasPendingUpdate\}/);
-  assert.match(dockBlock, /aria-label=\{hasPendingUpdate \? t\("settings.titleWithUpdate"\) : t\("settings.title"\)\}["\s\S]*?onClick=\{props\.onOpenSettings\}/);
-  // 四入口 hover 提示统一 styled Tooltip：dock 内 3 处（公告的 Tooltip 在 AnnouncementCenter 内部）
-  assert.equal((dockBlock.match(/<Tooltip delayDuration=\{300\}>/g) || []).length, 3);
+  assert.match(dockBlock, /aria-label=\{hasPendingUpdate \? t\("settings.titleWithUpdate"\) : t\("settings.title"\)\}["\s\S]*?onClick=\{props\.onOpenSettings\}["\s\S]*?<Settings className="size-4" \/>/);
+  // 五入口 hover 提示统一 styled Tooltip：dock 内 4 处（公告的 Tooltip 在 AnnouncementCenter 内部）
+  assert.equal((dockBlock.match(/<Tooltip delayDuration=\{300\}>/g) || []).length, 4);
+  // 官网入口：使用系统浏览器打开固定官网地址。
+  assert.match(dockBlock, /aria-label=\{t\("about\.website"\)\}/);
+  assert.match(dockBlock, /openExternal\(WEBSITE_URL, true\)/);
+  assert.match(dockBlock, /<Globe className="size-4" \/>/);
   // 反馈入口：Tooltip + aria-label 承担提示，原生 title 移除（防与 Tooltip 双弹）
   assert.match(dockBlock, /aria-label=\{t\("feedback\.title"\)\} onClick=\{props\.onOpenFeedback\}/);
   assert.match(dockBlock, /<TooltipContent side="right" sideOffset=\{6\}>\{t\("feedback\.title"\)\}<\/TooltipContent>/);
@@ -48,8 +52,8 @@ test("dock keeps the three actions and delegates the homepage link to AboutPopov
     /<DockItem>\s*<AnnouncementCenter \/>\s*<\/DockItem>/,
     "",
   );
-  assert.equal((dockActions.match(/variant="ghost"/g) || []).length, 3);
-  // 官网入口已从 dock 迁入 AboutPopover（关于弹框），官方站点链接必须仍在
+  assert.equal((dockActions.match(/variant="ghost"/g) || []).length, 4);
+  // 官网链接也由关于弹框复用同一个地址。
   const about = readFileSync("src/renderer/src/components/app/AboutPopover.tsx", "utf8");
   assert.match(about, /WEBSITE_URL = "https:\/\/ayuayue\.github\.io\/PiDeck\/"/);
   assert.match(about, /label=\{t\("about\.website"\)\}/);

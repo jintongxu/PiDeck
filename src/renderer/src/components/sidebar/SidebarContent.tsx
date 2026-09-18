@@ -1,4 +1,4 @@
-import { Activity, Bolt, CirclePlus, Clock, Folder, Globe, MessageSquare, Monitor, Moon, Search, Sun } from "lucide-react";
+import { Activity, CirclePlus, Clock, Folder, Globe, MessageSquare, Monitor, Moon, Search, Settings, Sun } from "lucide-react";
 import { useEffect, useState, type ReactNode } from "react";
 import type { AgentTab, AppThemeMode, ArchivedDshSession, ArchivedPiSession, Project, SessionRecord, SessionSummary, WorktreeEntry } from "../../../../shared/types";
 import {
@@ -14,6 +14,7 @@ import {
 import { RpcLogViewer } from "./RpcLogViewer";
 import { sessionRecordToSummary } from "../../atoms";
 import { hasPendingUpdateAtom, pendingAppUpdateAtom, pendingCatalogUpdateAtom, pendingPiUpdateAtom, updateStatusAtom } from "../../atoms/update-atoms";
+import { announcementNotificationEnabledAtom } from "../../atoms/announcement-atoms";
 import { useAtomValue } from "jotai";
 import { isManagerSessionSummary, worktreeFamilyProjects } from "../../sessionManagerModel";
 import { t } from "../../i18n";
@@ -42,6 +43,8 @@ import { displayProjectDirectoryName, isChatProject } from "../../rendererUtils"
 import { formatAccelerator } from "../../../../shared/shortcuts";
 import { desktopApi } from "../../desktopApi";
 import { useShortcutBindings } from "../../hooks/useShortcutBindings";
+
+const WEBSITE_URL = "https://ayuayue.github.io/PiDeck/";
 
 export type SidebarActions = {
   projects: {
@@ -159,6 +162,7 @@ export function SidebarContent(props: SidebarContentProps) {
   const hasPendingCatalogUpdate = useAtomValue(pendingCatalogUpdateAtom);
   const hasPendingUpdate = useAtomValue(hasPendingUpdateAtom);
   const updateStatus = useAtomValue(updateStatusAtom);
+  const announcementEnabled = useAtomValue(announcementNotificationEnabledAtom);
   // tooltip 清单条目：按「哪一类有更新」组装，让用户不用猜圆点指的是什么。
   const updateItems = [
     hasPendingAppUpdate && updateStatus?.app?.latestVersion
@@ -461,7 +465,7 @@ export function SidebarContent(props: SidebarContentProps) {
                   aria-label 保留更新文案，读屏与纯键盘用户不依赖视觉圆点。 */}
                 <Tooltip delayDuration={300}>
                   <TooltipTrigger asChild>
-                    <Button type="button" variant="ghost" className="size-full rounded-full text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={hasPendingUpdate ? t("settings.titleWithUpdate") : t("settings.title")} onClick={props.onOpenSettings}><Bolt className="size-4" /></Button>
+                    <Button type="button" variant="ghost" className="size-full rounded-full text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={hasPendingUpdate ? t("settings.titleWithUpdate") : t("settings.title")} onClick={props.onOpenSettings}><Settings className="size-4" /></Button>
                   </TooltipTrigger>
                   <TooltipContent side="right" sideOffset={6} className="max-w-56">
                     {hasPendingUpdate ? (
@@ -482,9 +486,23 @@ export function SidebarContent(props: SidebarContentProps) {
                 {hasPendingUpdate && <span className="pointer-events-none absolute right-1 top-1 size-2 rounded-full bg-[var(--color-accent)]" aria-hidden="true" />}
               </div>
             </DockItem>
-            {/* 公告中心入口：未读红点在组件内部按 atom 派生（单一 owner） */}
+            {/* 公告中心入口：未读红点在组件内部按 atom 派生（单一 owner）。
+                开关关闭时不挂载 DockItem，避免 AnnouncementCenter 返回 null 后留下空位。 */}
+            {announcementEnabled ? (
+              <DockItem>
+                <AnnouncementCenter />
+              </DockItem>
+            ) : null}
             <DockItem>
-              <AnnouncementCenter />
+              {/* 官网入口：与历史 Dock 布局保持一致，始终用系统浏览器打开。 */}
+              <Tooltip delayDuration={300}>
+                <TooltipTrigger asChild>
+                  <Button type="button" variant="ghost" className="size-full rounded-full text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={t("about.website")} onClick={() => {
+                    void desktopApi.app.openExternal(WEBSITE_URL, true).catch(() => undefined);
+                  }}><Globe className="size-4" /></Button>
+                </TooltipTrigger>
+                <TooltipContent side="right" sideOffset={6}>{t("about.website")}</TooltipContent>
+              </Tooltip>
             </DockItem>
             <DockItem>
               {/* 反馈入口：与设置/公告统一 styled Tooltip（原生 title 移除，防双弹）；aria-label 保留读屏契约 */}

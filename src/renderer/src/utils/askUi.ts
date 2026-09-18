@@ -123,6 +123,17 @@ export function batchAnswerLabel(value: BatchAnswerValue): string {
 }
 
 /**
+ * 切换多选题中的一个选项。
+ * 保持输入数组不可变，供桌面端与 Web 端在 React functional updater 中使用，
+ * 避免连续点击时从旧 render 闭包读取答案而覆盖此前已选项。
+ */
+export function toggleAskMultiSelectValue(selectedValues: ReadonlyArray<string>, value: string): string[] {
+	return selectedValues.includes(value)
+		? selectedValues.filter((selectedValue) => selectedValue !== value)
+		: [...selectedValues, value];
+}
+
+/**
  * 解码扩展为桌面端约定的「标题|说明」选项。
  * Plan Mode 用这个轻量协议给“开始执行/先不执行”补充说明；
  * 普通 ask 选项没有分隔符时保持原文，避免误拆用户输入中的竖线。

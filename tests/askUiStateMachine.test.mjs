@@ -200,6 +200,27 @@ test("serializeBatchAnswers: multi_select 数组 value 序列化与 label 拼接
 	assert.equal(batchAnswerLabel(["A", "B", "C"]), "A、B、C");
 });
 
+test("toggleAskMultiSelectValue: 连续选择保留已选项，再点可取消单项", () => {
+	const { toggleAskMultiSelectValue } = loadAskUi();
+	const afterFirst = toggleAskMultiSelectValue([], "A");
+	const afterSecond = toggleAskMultiSelectValue(afterFirst, "B");
+	const afterDeselect = toggleAskMultiSelectValue(afterSecond, "A");
+	assert.deepEqual(JSON.parse(JSON.stringify(afterFirst)), ["A"]);
+	assert.deepEqual(JSON.parse(JSON.stringify(afterSecond)), ["A", "B"]);
+	assert.deepEqual(JSON.parse(JSON.stringify(afterDeselect)), ["B"]);
+	// 切换不修改调用方持有的数组，React state 可以安全复用旧快照。
+	assert.deepEqual(JSON.parse(JSON.stringify(afterFirst)), ["A"]);
+	assert.notEqual(afterFirst, afterSecond);
+	assert.notEqual(afterSecond, afterDeselect);
+});
+
+test("Web Ask 多选使用 functional updater，避免连续点击覆盖前一项", () => {
+	const webTimeline = readFileSync("src/renderer/src/web/WebTimeline.tsx", "utf8");
+	assert.match(webTimeline, /setBatchAnswers\(\(previous\) => \{/);
+	assert.match(webTimeline, /const previousValue = previous\[currentQ\.id\];/);
+	assert.match(webTimeline, /toggleAskMultiSelectValue\(selectedValues, val\)/);
+});
+
 function mockSelection(text) {
 	return {
 		window: {
@@ -252,6 +273,8 @@ test("SessionRuntimeUiOverlay 使用提取的纯逻辑与语义字号 token", ()
 	assert.match(source, /import \{[^}]*buildAskResponse[^}]*\} from "\.\.\/\.\.\/utils\/askUi"/);
 	assert.match(source, /import \{[^}]*serializeBatchAnswers[^}]*\} from "\.\.\/\.\.\/utils\/askUi"/);
 	assert.match(source, /import \{[^}]*shouldSuppressAskClick[^}]*\} from "\.\.\/\.\.\/utils\/askUi"/);
+	assert.match(source, /toggleAskMultiSelectValue/);
+	assert.match(source, /onToggleMultiSelect=\{\(value\) => toggleMultiSelect\(currentQuestion\.id, value\)\}/);
 	assert.doesNotMatch(source, /hasTextSelection/);
 	// 不再直接构造应答 payload（统一走 askUi.buildAskResponse）
 	assert.doesNotMatch(source, /void answer\(\{ value/);
@@ -300,6 +323,23 @@ test("AgentManager select 无选项降级为 input（不静默取消）", () => 
 	assert.match(source, /select 无有效选项时降级为 input/);
 	assert.match(source, /effectiveMethod/);
 	assert.doesNotMatch(source, /select 无选项时自动取消，不等用户响应/);
+});
+
+test("PiDeck SSH 适配脚本保持幂等，并同时覆盖 RPC 主机选择", () => {
+	const patch = readFileSync("scripts/patch-pi-maestro-ssh.mjs", "utf8");
+	assert.match(patch, /already patched/);
+	assert.match(patch, /ctx\.mode === "rpc"/);
+	assert.match(patch, /runRpcManager/);
+	assert.match(patch, /sshUnlockPromise/);
+	assert.match(patch, /unlockSshManager/);
+	assert.match(patch, /pideck-secret/);
+});
+
+test("SSH 控制按钮拒绝并发发送多个私有请求", () => {
+	const controller = readFileSync("src/renderer/src/hooks/useSessionComposerController.ts", "utf8");
+	assert.match(controller, /sshControlInFlightRef/);
+	assert.match(controller, /if \(sshControlInFlightRef\.current\) return;/);
+	assert.match(controller, /finally \{[\s\S]*sshControlInFlightRef\.current = false/);
 });
 
 test("PiDeck SSH 适配：secret 请求脱离标题并渲染为密码字段", () => {

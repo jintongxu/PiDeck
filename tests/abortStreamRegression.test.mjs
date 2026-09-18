@@ -21,6 +21,14 @@ test("abort feedback is toast-only and seals stream generation", () => {
 	assert.match(agentManager, /ipcChannels\.agentsNotice/);
 	assert.match(ipc, /agentsNotice:\s*"agents:notice"/);
 
+	// abort 携带错误文本时必须走系统通知，不再写入请求失败诊断卡
+	assert.match(agentManager, /if \(abortedTurn\) \{[\s\S]*?this\.notifyAgentAborted\(agentId\)/);
+	assert.match(agentManager, /private notifyAgentAborted\(agentId: string\)/);
+	assert.match(agentManager, /settings\.enableNotifications/);
+	assert.match(agentManager, /mainNotification\.aborted/);
+	assert.match(agentManager, /if \(abortedTurn\) \{[\s\S]*?this\.notifyAgentAborted\(agentId\)/);
+	assert.match(agentManager, /else \{[\s\S]*?this\.addDetailedErrorMessage\(agentId, String\(errorMsg\)\)/);
+
 	// 2) abort 必须封印 stream generation，并走 settled 协同解封
 	assert.match(agentManager, /this\.sealAgentStream\(agentId\)/);
 	assert.match(agentManager, /this\.openAgentStream\(agentId\)/);

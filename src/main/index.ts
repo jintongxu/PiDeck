@@ -2357,6 +2357,14 @@ async function sendAgentPromptWithIntegrations(
 	if (gateway && agentTab && agentTab.backend !== "pi") {
 		return gateway.sendPrompt(input);
 	}
+	// SSH control is consumed by pi-maestro-flow's input hook, not by the model
+	// or chat integrations. Keep the private marker exact so Flow can recognize it.
+	if (input.message.trim() === "__pideck_ssh_control__") {
+		return agentManager.sendPrompt({
+			...input,
+			agentMessage: "__pideck_ssh_control__",
+		});
+	}
 	const bridge = feishuBridge;
 	const bridgeConnected = bridge?.getStatus().status === "connected";
 	const hasFeishuBinding = bridgeConnected && bridge.hasSessionBinding(input.agentId);

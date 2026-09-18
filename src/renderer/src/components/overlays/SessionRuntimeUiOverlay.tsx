@@ -19,6 +19,7 @@ import {
 	serializeBatchAnswers,
 	shouldSuppressAskClick,
 	splitAskOption,
+	toggleAskMultiSelectValue,
 } from "../../utils/askUi";
 import { SecurityConfirmCard } from "./SecurityConfirmCard";
 import { Button } from "../ui-shadcn/button";
@@ -154,6 +155,18 @@ function BatchAskInlineBar(props: {
 		});
 	}
 
+	function toggleMultiSelect(questionId: string, value: string) {
+		// 从 setter 收到的最新答案计算，连续点击也不会用旧 render 覆盖此前选项。
+		setAnswers((current) => {
+			const currentValue = current[questionId];
+			const selectedValues: string[] = Array.isArray(currentValue) ? currentValue : [];
+			return {
+				...current,
+				[questionId]: toggleAskMultiSelectValue(selectedValues, value),
+			};
+		});
+	}
+
 	function submitText(question: AgentUiBatchQuestion) {
 		const value = inputValues[question.id]?.trim();
 		if (value) setAnswer(question.id, value, value, question.type === "select");
@@ -281,6 +294,7 @@ function BatchAskInlineBar(props: {
 						inputValue={inputValues[currentQuestion.id] ?? ""}
 						responding={props.responding}
 						onAnswer={(value, label, wasCustom) => setAnswer(currentQuestion.id, value, label, wasCustom)}
+						onToggleMultiSelect={(value) => toggleMultiSelect(currentQuestion.id, value)}
 						onInputChange={(value) => setInputValues((current) => ({ ...current, [currentQuestion.id]: value }))}
 						onSubmitInput={() => submitText(currentQuestion)}
 						onPrevious={currentTab > 0 ? () => setCurrentTab(currentTab - 1) : undefined}
@@ -310,6 +324,7 @@ function BatchQuestion(props: {
 	inputValue: string;
 	responding: boolean;
 	onAnswer: (value: BatchAnswer, label?: string, wasCustom?: boolean) => void;
+	onToggleMultiSelect: (value: string) => void;
 	onInputChange: (value: string) => void;
 	onSubmitInput: () => void;
 	onPrevious?: () => void;
@@ -462,11 +477,7 @@ function BatchQuestion(props: {
 										disabled={props.responding}
 										onClick={() => {
 											if (shouldSuppressAskClick()) return;
-											// 切换选中项：multi_select 答案始终是数组
-											const next = selected
-												? selectedValues.filter((v) => v !== value)
-												: [...selectedValues, value];
-											props.onAnswer(next, next.join("、"));
+											props.onToggleMultiSelect(value);
 										}}
 									>
 										{/* 选中态对勾标记：主题色 accent 对比度低时只靠边框/背景变色难分辨已选项 */}

@@ -14,7 +14,7 @@ import type { UIMessage } from "ai";
 import { Button } from "@/components/ui-shadcn/button";
 import { t } from "@/i18n";
 import { cn } from "@/lib/utils";
-import { splitAskOption, formatAskTitle, serializeBatchAnswers } from "../utils/askUi";
+import { splitAskOption, formatAskTitle, serializeBatchAnswers, toggleAskMultiSelectValue } from "../utils/askUi";
 import { WebAssistantText } from "./WebAssistantText";
 import type { WebPendingUiRequest } from "./webTypes";
 import type { AgentUiResponse } from "../../../shared/types";
@@ -248,11 +248,17 @@ function WebAskCard(props: {
 		};
 
 		const handleToggleMulti = (val: string) => {
-			const arr = Array.isArray(currentAns) ? [...currentAns] : [];
-			const idx = arr.indexOf(val);
-			if (idx >= 0) arr.splice(idx, 1);
-			else arr.push(val);
-			setBatchAnswers({ ...batchAnswers, [currentQ.id]: arr });
+			// 使用 functional updater：连续点击可能在同一批 React 更新中发生，
+			// 不能从当前 render 捕获的 batchAnswers/currentAns 构造下一份答案，
+			// 否则第二次点击会覆盖第一次选择。
+			setBatchAnswers((previous) => {
+				const previousValue = previous[currentQ.id];
+				const selectedValues = Array.isArray(previousValue) ? previousValue : [];
+				return {
+					...previous,
+					[currentQ.id]: toggleAskMultiSelectValue(selectedValues, val),
+				};
+			});
 		};
 
 		return (

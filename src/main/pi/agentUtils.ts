@@ -13,6 +13,14 @@ export function stripAnsi(text: string): string {
 	return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
 }
 
+/**
+ * 判断 Pi/Provider 是否把一次取消包装成普通 error 文案。
+ * 只匹配明确的 abort 语义，避免把带有一般性“cancel”字样的真实服务错误静默掉。
+ */
+export function isAbortErrorMessage(message: string): boolean {
+	return /(?:request|operation|signal|stream)\s+(?:was\s+)?aborted|aborted\s+by\s+(?:caller|user|abort|signal)/i.test(message);
+}
+
 /** 从参数列表中取首个有效数字。 */
 export function pickNumber(...values: unknown[]): number | undefined {
 	for (const value of values) {
