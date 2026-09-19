@@ -1,6 +1,8 @@
 import { Ellipsis, Lightbulb } from "lucide-react";
+import type { DragEvent } from "react";
 import { useAtomValue } from "jotai";
 import type { AgentTab, SessionRecord } from "../../../../shared/types";
+import { sidebarSessionOrderIndex, type SidebarDropPosition } from "../../../../shared/sidebarSessionOrder";
 import { sessionStatusDotClass } from "../../agentListDisplay";
 import { sessionRecordToSummary } from "../../atoms";
 import { sessionRuntimeUiByIdAtom } from "../../atoms/session-atoms";
@@ -70,7 +72,14 @@ export function ActiveSessionsTree(props: {
 			});
 		}
 	}
-	liveRows.sort((left, right) => right.sortAt - left.sortAt);
+	const activeSessionOrder = controller.sidebarSessionOrder("active");
+	const activeSessionBaseOrder = controller.sidebarSessionBaseOrder("active");
+	liveRows.sort((left, right) => {
+		const leftOrder = sidebarSessionOrderIndex(activeSessionBaseOrder, left.record?.id);
+		const rightOrder = sidebarSessionOrderIndex(activeSessionBaseOrder, right.record?.id);
+		return leftOrder - rightOrder || right.sortAt - left.sortAt;
+	});
+	const activePreviewRank = new Map(activeSessionOrder.map((id, index) => [id, index]));
 
 	if (liveRows.length === 0) {
 		return (
@@ -79,6 +88,51 @@ export function ActiveSessionsTree(props: {
 			</div>
 		);
 	}
+
+	const activeDragSourceProps = (sessionId: string | undefined) => {
+		if (!sessionId) return {};
+		return {
+			draggable: true,
+			onDragStart: (event: DragEvent<HTMLButtonElement>) => {
+				event.dataTransfer.effectAllowed = "move";
+				event.dataTransfer.setData(SESSION_TAB_DRAG_MIME, sessionId);
+				event.dataTransfer.setData("text/plain", sessionId);
+				props.actions.sessions.beginDrag?.(sessionId);
+				controller.startSessionDrag(
+					"active",
+					sessionId,
+					liveRows.map((row) => row.record?.id).filter((id): id is string => Boolean(id)),
+				);
+			},
+			onDragEnd: () => {
+				props.actions.sessions.endDrag?.();
+				controller.finishSessionDrag();
+			},
+		};
+	};
+	const activeDropProps = (sessionId: string | undefined) => {
+		if (!sessionId) return {};
+		return {
+			onDragOver: (event: DragEvent<HTMLDivElement>) => {
+				if (controller.sessionDrag.scope !== "active") return;
+				event.preventDefault();
+				if (controller.sessionDrag.sourceSessionId === sessionId) return;
+				const rect = event.currentTarget.getBoundingClientRect();
+				const position: SidebarDropPosition = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+				controller.setSessionDropTarget("active", sessionId, position);
+			},
+			onDrop: (event: DragEvent<HTMLDivElement>) => {
+				event.preventDefault();
+				const source = event.dataTransfer.getData(SESSION_TAB_DRAG_MIME) || event.dataTransfer.getData("text/plain");
+				const position = controller.sessionDrag.position;
+				if (source) {
+					controller.dropSidebarSession("active", source, sessionId, position);
+				} else {
+					controller.finishSessionDrag();
+				}
+			},
+		};
+	};
 
 	return (
 		<div className="active-sessions-list flex flex-col gap-0">
@@ -97,6 +151,8 @@ export function ActiveSessionsTree(props: {
 					<div
 						key={agent.id}
 						className="group/row relative mt-0.5 flex min-h-8 items-center"
+						style={{ order: sessionId ? activePreviewRank.get(sessionId) ?? Number.MAX_SAFE_INTEGER : Number.MAX_SAFE_INTEGER }}
+						{...activeDropProps(sessionId)}
 						onContextMenu={(event) => {
 							event.preventDefault();
 							void controller.openMenu({ kind: "agent", agentId: agent.id, x: event.clientX, y: event.clientY });
@@ -111,18 +167,17 @@ export function ActiveSessionsTree(props: {
 						>
 							<button
 								type="button"
-								className={cn(activeRowClass, selected && "bg-bg-active text-foreground")}
+								className={cn(
+									activeRowClass,
+									selected && "bg-bg-active text-foreground",
+									sessionId && controller.sessionDrag.sourceSessionId === sessionId && "opacity-60",
+									sessionId && controller.sessionDrag.overSessionId === sessionId && "ring-1 ring-border",
+									sessionId && controller.sessionDrag.overSessionId === sessionId && controller.sessionDrag.position === "before" && "ring-2 ring-inset ring-primary/70",
+									sessionId && controller.sessionDrag.overSessionId === sessionId && controller.sessionDrag.position === "after" && "ring-2 ring-inset ring-primary/70",
+								)}
 								onClick={() => openSession()}
 								onDoubleClick={() => openSession("permanent")}
-								draggable={Boolean(sessionId)}
-								onDragStart={(event) => {
-									if (!sessionId) return;
-									event.dataTransfer.effectAllowed = "move";
-									event.dataTransfer.setData(SESSION_TAB_DRAG_MIME, sessionId);
-									event.dataTransfer.setData("text/plain", sessionId);
-									props.actions.sessions.beginDrag?.(sessionId);
-								}}
-								onDragEnd={() => props.actions.sessions.endDrag?.()}
+								{...activeDragSourceProps(sessionId)}
 							>
 								<span
 									className={cn(

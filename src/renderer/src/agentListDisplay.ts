@@ -1,6 +1,7 @@
 import { canonicalizeSessionPath, getSessionEnvironment } from "../../shared/sessionIdentity";
 import type { AgentTab, SessionEnvironment, SessionSummary } from "../../shared/types";
 import { sessionPillOf, type SessionFilterPill } from "./sessionFilterPills";
+import { sidebarSessionOrderIndex } from "../../shared/sidebarSessionOrder";
 
 /**
  * 会话/Agent 行的状态点 Tailwind bg 类（跨 Sidebar SessionTree 与会话 Tab 复用）。
@@ -74,12 +75,16 @@ export function compareProjectChildren(
 	left: ProjectChildItem,
 	right: ProjectChildItem,
 	pinnedSessionIds: ReadonlySet<string>,
+	sessionOrder: readonly string[] = [],
 ): number {
 	const leftId = getProjectChildSessionId(left);
 	const rightId = getProjectChildSessionId(right);
 	const leftPinned = leftId !== undefined && pinnedSessionIds.has(leftId);
 	const rightPinned = rightId !== undefined && pinnedSessionIds.has(rightId);
 	if (leftPinned !== rightPinned) return leftPinned ? -1 : 1;
+	const leftOrder = sidebarSessionOrderIndex(sessionOrder, leftId);
+	const rightOrder = sidebarSessionOrderIndex(sessionOrder, rightId);
+	if (leftOrder !== rightOrder) return leftOrder - rightOrder;
 	return right.sortAt - left.sortAt;
 }
 
@@ -235,12 +240,15 @@ export function getProjectAgentSessionDisplay({
 	sessions,
 	visibleChildCount,
 	pinnedSessionIds = new Set<string>(),
+	sessionOrder = [],
 }: {
 	agents: AgentTab[];
 	sessions: SessionSummary[];
 	visibleChildCount?: number;
 	/** Stable SessionRecord ids pinned inside this project's list. Unknown ids are ignored. */
 	pinnedSessionIds?: ReadonlySet<string>;
+	/** User-defined sidebar order; unknown ids sort after newly discovered sessions. */
+	sessionOrder?: readonly string[];
 }): ProjectAgentSessionDisplay {
 	const sessionByKey = new Map<string, SessionSummary>();
 	const unkeyedSessions: SessionSummary[] = [];
@@ -475,7 +483,7 @@ export function getProjectAgentSessionDisplay({
 		}
 	}
 
-	children.sort((left, right) => compareProjectChildren(left, right, pinnedSessionIds));
+	children.sort((left, right) => compareProjectChildren(left, right, pinnedSessionIds, sessionOrder));
 
 	const limit = visibleChildCount ?? DEFAULT_VISIBLE_PROJECT_CHILD_LIMIT;
 	const visibleChildren = children.slice(0, limit);

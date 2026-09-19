@@ -53,7 +53,7 @@ export type SidebarActions = {
     refresh: (projectId: string) => Promise<void>;
     /** 重扫所有项目目录的存在性并刷新侧栏清单。 */
     refreshAll: () => Promise<void>;
-    reorder: (sourceProjectId: string, targetProjectId: string) => Promise<void>;
+    reorder: (projectIds: string[]) => Promise<void>;
     reveal: (project: Project) => Promise<void>;
     openWithEditor: (project: Project) => void;
     importSessions: (project: Project, source: "codex" | "claude" | "opencode" | "zcode" | "workbuddy" | "cursor") => void;

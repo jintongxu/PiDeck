@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useAtom, useAtomValue } from "jotai";
 import type { AgentBackend, AgentTab, Project, SessionRecord } from "../../../shared/types";
+import { reorderSidebarSessionIds, type SidebarDropPosition, type SidebarSessionOrderScope } from "../../../shared/sidebarSessionOrder";
 import {
   agentInventoryAtom,
   projectInventoryAtom,
@@ -120,10 +121,20 @@ export type SidebarController = {
    * 切换到其他工作区时自动展开，避免「选中了却看不到会话」；
    * 再次点击当前工作区时切换折叠。
    */
-  drag: { sourceProjectId?: string; overProjectId?: string };
-  startProjectDrag: (projectId: string) => void;
-  setProjectDropTarget: (projectId?: string) => void;
+  drag: { sourceProjectId?: string; overProjectId?: string; position?: SidebarDropPosition; order?: string[] };
+  startProjectDrag: (projectId: string, projectIds: readonly string[]) => void;
+  setProjectDropTarget: (projectId?: string, position?: SidebarDropPosition) => void;
   finishProjectDrag: () => void;
+  sidebarSessionOrder: (scope: SidebarSessionOrderScope) => readonly string[];
+  /** Persisted/base order; unlike sidebarSessionOrder this never contains drag preview state. */
+  sidebarSessionBaseOrder: (scope: SidebarSessionOrderScope) => readonly string[];
+  reorderSidebarSessions: (scope: SidebarSessionOrderScope, sourceSessionId: string, targetSessionId: string, position?: SidebarDropPosition) => void;
+  /** Atomically commits the current drag target before dragend can clear the transient state. */
+  dropSidebarSession: (scope: SidebarSessionOrderScope, sourceSessionId: string, targetSessionId: string, position?: SidebarDropPosition) => void;
+  sessionDrag: { scope?: SidebarSessionOrderScope; sourceSessionId?: string; overSessionId?: string; position?: SidebarDropPosition; order?: string[] };
+  startSessionDrag: (scope: SidebarSessionOrderScope, sessionId: string, sessionIds?: readonly string[]) => void;
+  setSessionDropTarget: (scope: SidebarSessionOrderScope, sessionId?: string, position?: SidebarDropPosition) => void;
+  finishSessionDrag: () => void;
   menu: SidebarMenuTarget | null;
   openMenu: (target: SidebarMenuTarget) => Promise<void>;
   closeMenu: () => void;
@@ -226,6 +237,10 @@ export function useSidebarController(options: {
   settingsPinnedSessionIds?: readonly string[];
   /** 置顶集合变更时写入 settings.json。 */
   persistPinnedSessionIds?: (sessionIds: string[]) => void;
+  /** settings.json 中已保存的活动/聊天侧栏会话顺序。 */
+  settingsSidebarSessionOrder?: Partial<Record<SidebarSessionOrderScope, readonly string[]>>;
+  /** 侧栏会话顺序变更时写入 settings.json。 */
+  persistSidebarSessionOrder?: (order: Partial<Record<SidebarSessionOrderScope, string[]>>) => void;
   /** 初始 settings.get 已完成；旧 key 迁移必须等此时才允许落盘。 */
   settingsLoaded?: boolean;
   /** 权威 settings 已应用且旧 key 已完成迁移后通知 App 开始懒加载会话。 */
@@ -249,7 +264,16 @@ export function useSidebarController(options: {
   const [sourceFilterMenu, setSourceFilterMenu] = useState<SidebarSourceFilterMenu>();
   const [expandedSubagentGroups, setExpandedSubagentGroups] = useState<Set<string>>(() => new Set());
   const [expandedWorktreePaths, setExpandedWorktreePaths] = useState<Set<string>>(() => new Set());
-  const [drag, setDrag] = useState<{ sourceProjectId?: string; overProjectId?: string }>({});
+  const [drag, setDrag] = useState<{ sourceProjectId?: string; overProjectId?: string; position?: SidebarDropPosition; order?: string[] }>({});
+  const [sessionDrag, setSessionDrag] = useState<{ scope?: SidebarSessionOrderScope; sourceSessionId?: string; overSessionId?: string; position?: SidebarDropPosition; order?: string[] }>({});
+  const sessionDragRef = useRef(sessionDrag);
+  sessionDragRef.current = sessionDrag;
+  const [sessionOrderByScope, setSessionOrderByScope] = useState<Partial<Record<SidebarSessionOrderScope, string[]>>>(() => ({}));
+  const sessionOrderByScopeRef = useRef(sessionOrderByScope);
+  sessionOrderByScopeRef.current = sessionOrderByScope;
+  const sessionOrderHydratedRef = useRef(false);
+  const persistSidebarSessionOrderRef = useRef(options.persistSidebarSessionOrder);
+  persistSidebarSessionOrderRef.current = options.persistSidebarSessionOrder;
   const [menu, setMenu] = useState<SidebarMenuTarget | null>(null);
   const [agentRpcLogging, setAgentRpcLoggingById] = useState<Map<string, boolean>>(() => new Map());
   // RPC 日志开关（agentId 键，只增不清 → 关闭时删键；agentId 每次 spawn 随机，旧键无复用价值）
@@ -305,6 +329,53 @@ export function useSidebarController(options: {
     setPinnedSessionIds(next);
     persistPinnedSessionIdsRef.current?.([...next]);
   }, []);
+
+  // 会话顺序按活动/聊天分开保存；SessionRecord.id 跨重启稳定，未知 id 留在数组尾部，
+  // 这样懒加载或首次扫描完成后不会因为中间状态丢掉用户排好的位置。
+  useEffect(() => {
+    if (sessionOrderHydratedRef.current || !options.settingsLoaded) return;
+    sessionOrderHydratedRef.current = true;
+    const hydrated: Partial<Record<SidebarSessionOrderScope, string[]>> = {};
+    for (const scope of ["active", "chat"] as const) {
+      const value = options.settingsSidebarSessionOrder?.[scope];
+      if (Array.isArray(value)) hydrated[scope] = [...value];
+    }
+    sessionOrderByScopeRef.current = hydrated;
+    setSessionOrderByScope(hydrated);
+  }, [options.settingsLoaded, options.settingsSidebarSessionOrder]);
+
+  const reorderSidebarSessions = useCallback((scope: SidebarSessionOrderScope, sourceSessionId: string, targetSessionId: string, position: SidebarDropPosition = "before") => {
+    if (!sourceSessionId || !targetSessionId || sourceSessionId === targetSessionId) return;
+    // 用户已拖动即视为权威，避免迟到的 settings.get 覆盖刚完成的排序。
+    sessionOrderHydratedRef.current = true;
+    const current = sessionOrderByScopeRef.current[scope] ?? [];
+    const next = reorderSidebarSessionIds(current, sourceSessionId, targetSessionId, position);
+    const updated = { ...sessionOrderByScopeRef.current, [scope]: next };
+    sessionOrderByScopeRef.current = updated;
+    setSessionOrderByScope(updated);
+    persistSidebarSessionOrderRef.current?.(updated);
+  }, []);
+
+  const dropSidebarSession = useCallback((scope: SidebarSessionOrderScope, sourceSessionId: string, targetSessionId: string, position?: SidebarDropPosition) => {
+    const drag = sessionDragRef.current;
+    if (!sourceSessionId) {
+      sessionDragRef.current = {};
+      setSessionDrag({});
+      return;
+    }
+    if (drag.scope === scope && drag.order) {
+      const updated = { ...sessionOrderByScopeRef.current, [scope]: drag.order };
+      sessionOrderHydratedRef.current = true;
+      sessionOrderByScopeRef.current = updated;
+      setSessionOrderByScope(updated);
+      persistSidebarSessionOrderRef.current?.(updated);
+    } else if (sourceSessionId !== targetSessionId) {
+      // Fallback when Chromium cleared transient state before drop was handled.
+      reorderSidebarSessions(scope, sourceSessionId, targetSessionId, position ?? drag.position);
+    }
+    sessionDragRef.current = {};
+    setSessionDrag({});
+  }, [reorderSidebarSessions]);
 
   // ── 侧栏 Chats/项目分段：localStorage 首屏缓存 + settings.json 可靠落盘（与展开集合同策略） ──
 
@@ -558,9 +629,58 @@ export function useSidebarController(options: {
     toggleWorktreeSessions,
     expandWorktreeSessions,
     drag,
-    startProjectDrag: (projectId) => setDrag({ sourceProjectId: projectId }),
-    setProjectDropTarget: (projectId) => setDrag((current) => ({ ...current, overProjectId: projectId })),
+    startProjectDrag: (projectId, projectIds) => setDrag({ sourceProjectId: projectId, order: [...projectIds] }),
+    setProjectDropTarget: (projectId, position) => setDrag((current) => {
+      if (!projectId || !position || !current.sourceProjectId || !current.order) return current;
+      if (current.overProjectId === projectId && current.position === position) return current;
+      return {
+        ...current,
+        overProjectId: projectId,
+        position,
+        order: reorderSidebarSessionIds(current.order, current.sourceProjectId, projectId, position),
+      };
+    }),
     finishProjectDrag: () => setDrag({}),
+    sidebarSessionOrder: (scope) => (
+      sessionDrag.scope === scope && sessionDrag.order
+        ? sessionDrag.order
+        : sessionOrderByScope[scope] ?? []
+    ),
+    sidebarSessionBaseOrder: (scope) => sessionOrderByScope[scope] ?? [],
+    reorderSidebarSessions,
+    dropSidebarSession,
+    sessionDrag,
+    startSessionDrag: (scope, sessionId, sessionIds) => {
+      // Once the user starts dragging, a late settings response must not replace
+      // the locally seeded order used by the live preview.
+      sessionOrderHydratedRef.current = true;
+      const current = sessionOrderByScopeRef.current[scope] ?? [];
+      const seeded = [...current];
+      for (const id of sessionIds ?? []) {
+        if (id && !seeded.includes(id)) seeded.push(id);
+      }
+      if (!seeded.includes(sessionId)) seeded.push(sessionId);
+      const nextDrag = { scope, sourceSessionId: sessionId, order: seeded };
+      sessionDragRef.current = nextDrag;
+      setSessionDrag(nextDrag);
+    },
+    setSessionDropTarget: (scope, sessionId, position) => {
+      const current = sessionDragRef.current;
+      if (current.scope !== scope || !sessionId || !position || !current.sourceSessionId || !current.order) return;
+      if (current.overSessionId === sessionId && current.position === position) return;
+      const next = {
+        ...current,
+        overSessionId: sessionId,
+        position,
+        order: reorderSidebarSessionIds(current.order, current.sourceSessionId, sessionId, position),
+      };
+      sessionDragRef.current = next;
+      setSessionDrag(next);
+    },
+    finishSessionDrag: () => {
+      sessionDragRef.current = {};
+      setSessionDrag({});
+    },
     menu,
     openMenu,
     closeMenu: () => {

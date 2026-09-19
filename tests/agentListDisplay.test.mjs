@@ -22,11 +22,16 @@ function loadModule() {
 	vm.runInNewContext(transpile("src/renderer/src/sessionFilterPills.ts"), pillsSandbox, {
 		filename: "sessionFilterPills.ts",
 	});
+	const orderSandbox = { exports: {} };
+	vm.runInNewContext(transpile("src/shared/sidebarSessionOrder.ts"), orderSandbox, {
+		filename: "sidebarSessionOrder.ts",
+	});
 	const sandbox = {
 		exports: {},
 		require: (specifier) => {
 			if (specifier === "../../shared/sessionIdentity") return identitySandbox.exports;
 			if (specifier === "./sessionFilterPills") return pillsSandbox.exports;
+			if (specifier === "../../shared/sidebarSessionOrder") return orderSandbox.exports;
 			throw new Error(`Unexpected import: ${specifier}`);
 		},
 	};

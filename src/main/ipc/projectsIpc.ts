@@ -227,8 +227,11 @@ export function registerProjectsIpc({
 	});
 	ipcMain.handle(
 		ipcChannels.projectsReorder,
-		async (_event, projectIds: string[]) => {
-			const result = await projectStore.reorder(projectIds);
+		async (_event, projectIds: unknown) => {
+			if (!Array.isArray(projectIds) || projectIds.some((id) => typeof id !== "string" || !id.trim())) {
+				throw new Error("INVALID_PROJECT_ORDER");
+			}
+			await projectStore.reorder(projectIds);
 			void appLogger.info("project", "Projects reordered", { count: projectIds.length });
 			return getVisibleProjects();
 		},

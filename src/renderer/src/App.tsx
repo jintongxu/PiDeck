@@ -2230,43 +2230,27 @@ export function App() {
     }
   }
 
-  async function reorderProjects(
-    sourceProjectId: string,
-    targetProjectId: string,
-  ) {
-    if (sourceProjectId === targetProjectId) return;
-    const sourceProject = projects.find(
-      (project) => project.id === sourceProjectId,
+  async function reorderProjects(projectIds: string[]) {
+    const rootProjectsById = new Map(
+      projects
+        .filter((project) => !project.worktreeParentId && !isChatProject(project))
+        .map((project) => [project.id, project]),
     );
-    const targetProject = projects.find(
-      (project) => project.id === targetProjectId,
-    );
-    if (isChatProject(sourceProject) || isChatProject(targetProject)) return;
-    const sourceIndex = projects.findIndex(
-      (project) => project.id === sourceProjectId,
-    );
-    const targetIndex = projects.findIndex(
-      (project) => project.id === targetProjectId,
-    );
-    if (sourceIndex === -1 || targetIndex === -1) return;
+    const nextRootProjects = projectIds
+      .map((projectId) => rootProjectsById.get(projectId))
+      .filter((project): project is Project => Boolean(project));
+    if (nextRootProjects.length !== rootProjectsById.size) return;
 
     const previousProjects = projects;
-    const nextProjects = [...projects];
-    const [movedProject] = nextProjects.splice(sourceIndex, 1);
-    const targetIndexAfterRemoval = nextProjects.findIndex(
-      (project) => project.id === targetProjectId,
-    );
-    const insertIndex =
-      sourceIndex < targetIndex
-        ? targetIndexAfterRemoval + 1
-        : targetIndexAfterRemoval;
-    nextProjects.splice(insertIndex, 0, movedProject);
+    let nextRootIndex = 0;
+    const nextProjects = projects.map((project) => {
+      if (project.worktreeParentId || isChatProject(project)) return project;
+      return nextRootProjects[nextRootIndex++];
+    });
     setProjects(nextProjects);
 
     try {
-      const savedProjects = await api.projects.reorder(
-        nextProjects.map((project) => project.id),
-      );
+      const savedProjects = await api.projects.reorder(projectIds);
       setProjects(savedProjects);
     } catch (error) {
       setProjects(previousProjects);
@@ -3397,6 +3381,7 @@ export function App() {
       settingsExpandedProjectIds={settings.sidebarExpandedProjectIds}
       settingsNavTab={settings.sidebarNavTab}
       settingsPinnedSessionIds={settings.pinnedSessionIds}
+      settingsSidebarSessionOrder={settings.sidebarSessionOrder}
       settingsLoaded={settingsLoaded}
       onExpandedProjectsReady={() => setExpandedProjectsReady(true)}
       // 关于弹框：版本号/官网/GitHub 链接数据来自 AppInfo IPC（上方 useEffect 已拉取）

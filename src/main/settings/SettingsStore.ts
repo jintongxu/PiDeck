@@ -12,6 +12,7 @@ import {
 } from "../../shared/imageGenParams";
 import { createDefaultExternalEditorSettings, createDefaultSoundAlertSettings, DEFAULT_PET_SCALE, normalizeSoundAlertSettings, type AppSettings } from "../../shared/types";
 import { normalizePinnedSessionIds } from "../../shared/pinnedSessions";
+import { normalizeSidebarSessionOrder } from "../../shared/sidebarSessionOrder";
 import { parseBusySendDelivery } from "../../shared/busySendDelivery";
 import { sanitizeShortcutOverrides } from "../../shared/shortcuts";
 import { normalizeThemeSchedule } from "../../shared/themeSchedule";
@@ -334,6 +335,11 @@ export class SettingsStore {
       this.settings.themeScheduleDarkStart = schedule.darkStart;
       // 置顶状态只接受稳定、非空的 SessionRecord id；旧设置缺省时自然回落为空。
       this.settings.pinnedSessionIds = normalizePinnedSessionIds(parsed.pinnedSessionIds);
+      // 侧栏拖动排序只保存稳定的 SessionRecord id；非法/重复值在设置边界清洗。
+      this.settings.sidebarSessionOrder = {
+        active: normalizeSidebarSessionOrder(parsed.sidebarSessionOrder?.active),
+        chat: normalizeSidebarSessionOrder(parsed.sidebarSessionOrder?.chat),
+      };
       // 声音提醒来自旧 JSON 时可能缺字段/非法；统一归一化（旧数据自动获得默认配置）。
       this.settings.soundAlert = normalizeSoundAlertSettings(parsed.soundAlert);
       // git 可执行文件路径来自旧 JSON 时可能是脏值（非字符串）；回落空串（自动解析），
@@ -491,6 +497,15 @@ export class SettingsStore {
     }
     if ("pinnedSessionIds" in safePatch) {
       safePatch.pinnedSessionIds = normalizePinnedSessionIds(safePatch.pinnedSessionIds);
+    }
+    if ("sidebarSessionOrder" in safePatch) {
+      const candidate = safePatch.sidebarSessionOrder;
+      safePatch.sidebarSessionOrder = candidate && typeof candidate === "object"
+        ? {
+          active: normalizeSidebarSessionOrder(candidate.active),
+          chat: normalizeSidebarSessionOrder(candidate.chat),
+        }
+        : {};
     }
     // 声音提醒来自渲染层，入参不可信：缺字段/非法引用/越界音量一律回落默认。
     if ("soundAlert" in safePatch) {

@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import type { ReactNode } from "react";
 import { ChevronDown, ChevronUp, Ellipsis, HatGlasses, Image as ImageIcon, Pin, Trash2 } from "lucide-react";
 import { useAtomValue } from "jotai";
 import type { AgentTab, Project, SessionRecord, SessionSummary } from "../../../../shared/types";
@@ -17,6 +17,7 @@ import { SessionHoverCard } from "./SessionHoverCard";
 import { TitleScrollText } from "./TitleScrollText";
 import { cn } from "../../lib/utils";
 import { SESSION_TAB_DRAG_MIME } from "../../utils/sessionSplitEdge";
+import type { SidebarDropPosition, SidebarSessionOrderScope } from "../../../../shared/sidebarSessionOrder";
 
 /** 与 ProjectTree.treeRowClass 同尺寸同圆角：分层后 utility 生效，必须「新学旧」对齐项目行，
  * 不能再用 min-h-11/rounded-xl（会明显高于/圆于项目行）。 */
@@ -99,6 +100,8 @@ export function SessionTree(props: {
   nested?: boolean;
   visibleChildCount?: number;
   onShowMore?: () => void;
+  /** 活动/聊天页传入时，允许同一分段内拖动顶层会话排序。 */
+  orderScope?: SidebarSessionOrderScope;
 }) {
   const filter = props.controller.sourceFilterFor(props.project.id);
   const search = props.controller.search.trim();
@@ -118,20 +121,34 @@ export function SessionTree(props: {
     visibleSessions: summaries,
     sources: filter,
   });
+  const sessionOrder = props.orderScope ? props.controller.sidebarSessionOrder(props.orderScope) : [];
+  const sessionBaseOrder = props.orderScope ? props.controller.sidebarSessionBaseOrder(props.orderScope) : [];
   const display = getProjectAgentSessionDisplay({
     agents: displayAgents,
     sessions: summaries,
     visibleChildCount: props.visibleChildCount ?? (props.nested ? Number.MAX_SAFE_INTEGER : props.controller.visibleChildCountFor(props.project.id)),
     pinnedSessionIds: props.controller.pinnedSessionIds,
+    sessionOrder: sessionBaseOrder,
   });
+  const resolveAgentSessionId = (agent: AgentTab) => {
+    const linked = props.sessions.find(
+      (session) => props.controller.catalog.runtimeBySessionId[session.id]?.agentId === agent.id,
+    ) ?? summaries.find((session) => session.filePath === agent.sessionPath);
+    return linked?.id;
+  };
+  const childSessionId = (child: ProjectChildItem) => (
+    child.type === "session" ? child.session.id : resolveAgentSessionId(child.agent)
+  );
+  const sessionPreviewRank = new Map(sessionOrder.map((id, index) => [id, index]));
+  const childOrderStyle = (child: ProjectChildItem) => {
+    const sessionId = childSessionId(child);
+    return props.orderScope && sessionId
+      ? { order: sessionPreviewRank.get(sessionId) ?? Number.MAX_SAFE_INTEGER }
+      : undefined;
+  };
   const displayedSessionIds = collectDisplayedSessionIds(
     display.visibleChildren,
-    (agent) => {
-      const linked = props.sessions.find(
-        (session) => props.controller.catalog.runtimeBySessionId[session.id]?.agentId === agent.id,
-      ) ?? summaries.find((session) => session.filePath === agent.sessionPath);
-      return linked?.id;
-    },
+    resolveAgentSessionId,
   );
   const draftSessions = props.sessions
     .filter((session) => session.status === "draft")
@@ -161,7 +178,8 @@ export function SessionTree(props: {
     void props.actions.sessions.open(props.project.id, sessionId, tabMode);
   };
 
-  const sessionDragProps = (sessionId: string) => ({
+  const canSidebarReorder = Boolean(props.orderScope) && !search;
+  const sessionDragProps = (sessionId: string, allowSidebarReorder = false) => ({
     draggable: true,
     onDragStart: (event: React.DragEvent) => {
       event.dataTransfer.effectAllowed = "move";
@@ -169,11 +187,57 @@ export function SessionTree(props: {
       // 部分浏览器要求有 text/plain 才能跨区域 drop
       event.dataTransfer.setData("text/plain", sessionId);
       props.actions.sessions.beginDrag?.(sessionId);
+      if (allowSidebarReorder && props.orderScope && canSidebarReorder) {
+        props.controller.startSessionDrag(
+          props.orderScope,
+          sessionId,
+          display.visibleChildren.flatMap((child) => {
+            const id = childSessionId(child);
+            return id ? [id] : [];
+          }),
+        );
+      }
     },
     onDragEnd: () => {
       props.actions.sessions.endDrag?.();
+      if (allowSidebarReorder) props.controller.finishSessionDrag();
     },
   });
+  const sessionDropProps = (sessionId: string, pinned: boolean) => {
+    if (!props.orderScope || !canSidebarReorder) return {};
+    const scope = props.orderScope;
+    return {
+      onDragOver: (event: React.DragEvent) => {
+        const source = props.controller.sessionDrag.sourceSessionId;
+        if (!source || props.controller.sessionDrag.scope !== scope) return;
+        event.preventDefault();
+        if (source === sessionId) return;
+        const rect = event.currentTarget.getBoundingClientRect();
+        const position: SidebarDropPosition = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+        props.controller.setSessionDropTarget(scope, sessionId, position);
+      },
+      onDrop: (event: React.DragEvent) => {
+        event.preventDefault();
+        const source = event.dataTransfer.getData(SESSION_TAB_DRAG_MIME) || event.dataTransfer.getData("text/plain");
+        const sourceSession = props.controller.catalog.sessionsByProject[props.project.id]?.find((session) => session.id === source);
+        const sourcePinned = sourceSession ? props.controller.isSessionPinned(sourceSession.id) : undefined;
+        const position = props.controller.sessionDrag.position;
+        if (source && (source === sessionId || sourcePinned === pinned)) {
+          // The live preview often moves the source row under the cursor; commit
+          // the controller-owned final order even when source === drop target.
+          props.controller.dropSidebarSession(scope, source, sessionId, position);
+        } else {
+          props.controller.finishSessionDrag();
+        }
+      },
+    };
+  };
+  const rowDragClass = (sessionId: string) => cn(
+    props.controller.sessionDrag.sourceSessionId === sessionId && "opacity-60",
+    props.controller.sessionDrag.overSessionId === sessionId && "ring-1 ring-border",
+    props.controller.sessionDrag.overSessionId === sessionId && props.controller.sessionDrag.position === "before" && "ring-2 ring-inset ring-primary/70",
+    props.controller.sessionDrag.overSessionId === sessionId && props.controller.sessionDrag.position === "after" && "ring-2 ring-inset ring-primary/70",
+  );
 
   const openContext = (event: React.MouseEvent, session: SessionSummary, pinnable = true) => {
     event.preventDefault();
@@ -226,7 +290,7 @@ export function SessionTree(props: {
             )}
             onClick={() => openSession(session.id)}
             onDoubleClick={() => openSession(session.id, "permanent")}
-            {...sessionDragProps(session.id)}
+            {...sessionDragProps(session.id, false)}
           >
             <div className="conversation-body min-w-0 flex-1 transition-[padding-right] group-hover/row:pr-7 group-focus-within/row:pr-7"><div className="conversation-title flex min-w-0 items-center gap-1.5">
               <TitleScrollText text={title} />
@@ -289,10 +353,11 @@ export function SessionTree(props: {
       const agentSession = props.sessions.find((session) => (
         props.controller.catalog.runtimeBySessionId[session.id]?.agentId === child.agent.id
       )) ?? summaries.find((session) => session.filePath === child.agent.sessionPath);
-      return <Fragment key={child.key}>
+      return <div key={child.key} className="flex flex-col" style={childOrderStyle(child)}>
         {/* 运行中 Agent 行：标题常被 truncate（如 "JZSSC40..."），悬浮展示完整标题 */}
         <div
           className={rowContainerClass}
+          {...(agentSession ? sessionDropProps(agentSession.id, props.controller.isSessionPinned(agentSession.id)) : {})}
           onContextMenu={(event) => { event.preventDefault(); void props.controller.openMenu({ kind: "agent", agentId: child.agent.id, x: event.clientX, y: event.clientY }); }}
         >
           <SessionHoverCard
@@ -307,10 +372,11 @@ export function SessionTree(props: {
               className={cn(
                 sessionRowClass,
                 agentSession?.id === props.currentSessionId && selectedRowClass,
+                agentSession ? rowDragClass(agentSession.id) : undefined,
               )}
               onClick={() => { if (agentSession) openSession(agentSession.id); }}
               onDoubleClick={() => { if (agentSession) openSession(agentSession.id, "permanent"); }}
-              {...(agentSession ? sessionDragProps(agentSession.id) : {})}
+              {...(agentSession ? sessionDragProps(agentSession.id, true) : {})}
             >
               {renderRuntimeStatusDot(child.agent.status)}
               <div className="conversation-body min-w-0 flex-1 transition-[padding-right] group-hover/row:pr-7 group-focus-within/row:pr-7"><div className="conversation-title flex min-w-0 items-center gap-1.5">
@@ -347,14 +413,15 @@ export function SessionTree(props: {
           </Button>
         </div>
         {renderSubagents(groupKey, child.codexSubagents, child.piSubagents)}
-      </Fragment>;
+      </div>;
     }
     const runtime = getBoundSidebarRuntimeAgent(props.controller.catalog, child.session.id);
     const runtimeSnapshot = props.controller.catalog.runtimeBySessionId[child.session.id];
     const pinned = props.controller.isSessionPinned(child.session.id);
-    return <Fragment key={child.session.id}>
+    return <div key={child.session.id} className="flex flex-col" style={childOrderStyle(child)}>
       <div
         className={rowContainerClass}
+        {...sessionDropProps(child.session.id, pinned)}
         onContextMenu={(event) => openContext(event, child.session)}
       >
         <SessionHoverCard
@@ -372,10 +439,11 @@ export function SessionTree(props: {
               // 历史会话需要比运行中 Agent 更松的点击区域和行间距，避免连续记录挤成一块。
               "session-row history-session-row mx-0 min-h-8 pl-2 pr-2 py-0",
               child.session.id === props.currentSessionId && selectedRowClass,
+              rowDragClass(child.session.id),
             )}
             onClick={() => openSession(child.session.id)}
             onDoubleClick={() => openSession(child.session.id, "permanent")}
-            {...sessionDragProps(child.session.id)}
+            {...sessionDragProps(child.session.id, true)}
           >
             {renderRuntimeStatusDot(runtimeSnapshot?.status)}
             {pinned && (
@@ -432,7 +500,7 @@ export function SessionTree(props: {
         </Button>
       </div>
       {renderSubagents(groupKey, child.codexSubagents, child.piSubagents)}
-    </Fragment>;
+    </div>;
   };
 
   return (
@@ -464,7 +532,7 @@ export function SessionTree(props: {
                 )}
                 onClick={() => openSession(session.id)}
                 onDoubleClick={() => openSession(session.id, "permanent")}
-                {...sessionDragProps(session.id)}
+                {...sessionDragProps(session.id, false)}
               >
                 <div className="conversation-body min-w-0 flex-1 transition-[padding-right] group-hover/row:pr-7 group-focus-within/row:pr-7"><div className="conversation-title flex min-w-0 items-center gap-1.5">
                   {renderRuntimeStatusDot(runtime?.status)}

@@ -63,6 +63,17 @@ function loadControllerModule() {
       if (specifier === "../utils/sidebarExpandedProjects") return loadExpandedProjectsModule();
       if (specifier === "../utils/sidebarNavTab") return loadNavTabModule();
       if (specifier === "../sessionFilterPills") return loadPillsModule();
+      if (specifier === "../../../shared/sidebarSessionOrder") {
+        return {
+          reorderSidebarSessionIds: (order, source, target) => {
+            if (source === target) return [...order];
+            const next = [...order].filter((id) => id !== source);
+            const index = next.indexOf(target);
+            next.splice(index < 0 ? next.length : index, 0, source);
+            return next;
+          },
+        };
+      }
       throw new Error(`Unexpected import: ${specifier}`);
     },
   );

@@ -437,6 +437,14 @@ export type AppSettings = {
 	 * 在展示时安全忽略，避免修改 pi 会话文件或把短生命周期 agentId 持久化。
 	 */
 	pinnedSessionIds?: string[];
+	/**
+	 * 侧栏活动/聊天列表的用户自定义顺序。只保存稳定 SessionRecord.id，
+	 * 未加载或已删除的 id 会在展示时安全忽略，旧 settings 缺省为空。
+	 */
+	sidebarSessionOrder?: {
+		active?: string[];
+		chat?: string[];
+	};
 
 	// ── 扩展管理 ──
 	/**

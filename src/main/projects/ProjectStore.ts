@@ -264,21 +264,35 @@ export class ProjectStore {
     return removedIds;
   }
 
+  /**
+   * Reorder only root projects. The renderer may send the visible subset (for
+   * example while WSL filtering is enabled), so unknown/child ids are ignored
+   * and untouched roots keep their existing slots and relative order.
+   */
   async reorder(projectIds: string[]) {
-    const movableProjectIds = projectIds.filter((id) => id !== CHAT_PROJECT_ID);
-    const orderById = new Map(movableProjectIds.map((id, index) => [id, index]));
-    const tailStart = movableProjectIds.length;
-    const currentOrder = this.list()
-      .filter((project) => !this.isChatProject(project))
+    const currentRootOrder = this.list()
+      .filter((project) => !this.isChatProject(project) && !project.worktreeParentId)
       .map((project) => project.id);
+    const rootIds = new Set(currentRootOrder);
+    const requested = [...new Set(projectIds.filter((id) => rootIds.has(id)))];
+    const requestedIds = new Set(requested);
+    const requestedIterator = requested[Symbol.iterator]();
+    const nextRootOrder = [...currentRootOrder];
+    // Replace only slots belonging to the visible/requested roots. Hidden roots
+    // keep their current slots while the visible subset can still be reordered.
+    for (let index = 0; index < nextRootOrder.length; index += 1) {
+      if (!requestedIds.has(nextRootOrder[index])) continue;
+      nextRootOrder[index] = requestedIterator.next().value ?? nextRootOrder[index];
+    }
 
     this.projects.forEach((project) => {
       if (this.isChatProject(project)) {
         project.sortOrder = -1;
         return;
       }
-      const explicitOrder = orderById.get(project.id);
-      project.sortOrder = explicitOrder ?? tailStart + currentOrder.indexOf(project.id);
+      if (project.worktreeParentId) return;
+      const nextIndex = nextRootOrder.indexOf(project.id);
+      if (nextIndex >= 0) project.sortOrder = nextIndex;
     });
 
     await this.save();

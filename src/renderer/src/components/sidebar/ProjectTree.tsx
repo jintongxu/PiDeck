@@ -2,6 +2,7 @@ import { ChevronRight, ChevronsDownUp, Ellipsis, Filter, Folder, FolderOpen, Fol
 import type { DragEvent } from "react";
 import { useAtomValue } from "jotai";
 import type { Project, WorktreeEntry } from "../../../../shared/types";
+import type { SidebarDropPosition } from "../../../../shared/sidebarSessionOrder";
 import type { SidebarController } from "../../hooks/useSidebarController";
 import { t } from "../../i18n";
 import type { SidebarActions } from "./SidebarContent";
@@ -96,18 +97,33 @@ export function ProjectTree(props: {
   const rootProjects = props.controller.catalog.projects.filter((project) =>
     !project.worktreeParentId && matchesProject(project, props.controller.search.trim(), props.controller),
   );
+  const visibleRootIds = rootProjects.filter((project) => !isChatProject(project)).map((project) => project.id);
+  const previewRootIds = props.controller.drag.order ?? visibleRootIds;
+  const previewRank = new Map(previewRootIds.map((id, index) => [id, index]));
   const dragStart = (event: DragEvent<HTMLButtonElement>, projectId: string) => {
     if (props.controller.search.trim()) return;
     event.dataTransfer.effectAllowed = "move";
     event.dataTransfer.setData("text/plain", projectId);
-    props.controller.startProjectDrag(projectId);
+    props.controller.startProjectDrag(projectId, visibleRootIds);
   };
-  const drop = (event: DragEvent<HTMLButtonElement>, projectId: string) => {
+  const drop = (event: DragEvent<HTMLElement>, projectId: string) => {
     event.preventDefault();
     const source = event.dataTransfer.getData("text/plain") || props.controller.drag.sourceProjectId;
+    const finalOrder = props.controller.drag.order;
     props.controller.finishProjectDrag();
     if (props.controller.search.trim()) return;
-    if (source && source !== projectId) void props.actions.projects.reorder(source, projectId);
+    if (source && finalOrder) void props.actions.projects.reorder(finalOrder);
+  };
+  const setProjectDropTarget = (event: DragEvent<HTMLElement>, projectId: string) => {
+    const source = props.controller.drag.sourceProjectId;
+    if (!source) return;
+    event.preventDefault();
+    // After live reordering the dragged row itself often moves under the cursor.
+    // Keep it as a valid drop surface, but do not calculate another move.
+    if (source === projectId) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    const position: SidebarDropPosition = event.clientY < rect.top + rect.height / 2 ? "before" : "after";
+    props.controller.setProjectDropTarget(projectId, position);
   };
   const renderProject = (project: Project) => {
       const collapsed = props.controller.isProjectCollapsed(project.id);
@@ -125,14 +141,20 @@ export function ProjectTree(props: {
       const pendingAskCount = countProjectPendingAsks(project.id, props.controller, sessionRuntimeUiById);
       // 运行态属于具体会话，而不是项目容器；项目行只负责导航，避免多个 Agent 同时运行时
       // 项目头像出现无法指向目标会话的聚合动画。
-      return <div key={project.id} className={cn("project-group mb-1.5", project.worktreeEnabled && "worktree-enabled")}>
+      return <div
+        key={project.id}
+        className={cn("project-group mb-1.5", project.worktreeEnabled && "worktree-enabled")}
+        style={{ order: previewRank.get(project.id) ?? Number.MAX_SAFE_INTEGER }}
+      >
         <div
           className={cn(
             treeRowClass,
             !props.controller.search.trim() && "project-draggable",
             dragging && "dragging opacity-60",
-            dragOver && "drag-over ring-1 ring-border",
+            dragOver && "drag-over ring-2 ring-inset ring-primary/70",
           )}
+          onDragOver={(event) => setProjectDropTarget(event, project.id)}
+          onDrop={(event) => drop(event, project.id)}
           onContextMenu={(event) => { event.preventDefault(); void props.controller.openMenu({ kind: "project", projectId: project.id, x: event.clientX, y: event.clientY }); }}
         >
           <button
@@ -149,9 +171,6 @@ export function ProjectTree(props: {
             className="flex min-w-0 flex-1 items-center gap-1 py-0 pr-1 text-left"
             draggable={!props.controller.search.trim()}
             onDragStart={(event) => dragStart(event, project.id)}
-            onDragOver={(event) => { if (props.controller.drag.sourceProjectId && props.controller.drag.sourceProjectId !== project.id) { event.preventDefault(); props.controller.setProjectDropTarget(project.id); } }}
-            onDragLeave={() => props.controller.setProjectDropTarget(undefined)}
-            onDrop={(event) => drop(event, project.id)}
             onDragEnd={props.controller.finishProjectDrag}
             onClick={() => {
               // 项目主行同时承担选择和手风琴切换，让项目卡片本身保持唯一且明确的导航入口。
@@ -390,6 +409,7 @@ export function ProjectTree(props: {
               currentSessionId={props.currentSessionId}
               controller={props.controller}
               actions={props.actions}
+              orderScope="chat"
             />
           </div>
         )}
@@ -452,7 +472,9 @@ export function ProjectTree(props: {
               </DropdownMenu>
             </div>
           </div>
-          {workspaceProjects.map(renderProject)}
+          <div className="flex flex-col">
+            {workspaceProjects.map(renderProject)}
+          </div>
         </section>
       )}
       {/* 无任何工作区项目（新用户只有内置 Chat）：显式渲染空态引导。
