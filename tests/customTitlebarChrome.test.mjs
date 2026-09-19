@@ -148,10 +148,15 @@ test("toggle maximize tracks intent without stale isMaximized reads", () => {
   assert.doesNotMatch(header, /setMaximized\(\(current\)\s*=>\s*!current\)/);
 });
 
-test("window control hover uses solid hover surface", () => {
+test("window controls share the themed session toolbar background", () => {
+  assert.match(header, /className="window-controls bg-background\/80"/);
   assert.match(
+    tabs,
+    /session-tabs-bar flex h-10[^"]*bg-background\/80/,
+  );
+  assert.doesNotMatch(
     foundation,
-    /\.window-control:hover \{[\s\S]*?background:\s*var\(--color-bg-hover\);/,
+    /\.window-controls \{[^}]*background:\s*var\(--color-bg-sidebar\);/,
   );
 });
 

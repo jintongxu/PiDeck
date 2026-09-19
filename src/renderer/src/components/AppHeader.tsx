@@ -70,7 +70,7 @@ export function AppHeader({
     <>
       <div className="window-drag-layer" aria-hidden="true" />
       {showWinWindowControls ? (
-        <div className="window-controls" aria-label={t("app.windowControls")}>
+        <div className="window-controls bg-background/80" aria-label={t("app.windowControls")}>
           <button
             type="button"
             className={`window-control pin${windowAlwaysOnTop ? " active" : ""}`}

@@ -1446,7 +1446,6 @@ select:focus-visible {
   /* 紧凑靠右上角：每键 36px（原 50px） */
   grid-template-columns: repeat(4, 36px);
   height: var(--window-drag-height);
-  background: var(--color-bg-panel);
   -webkit-app-region: no-drag;
 }
 /* app-region 不继承（见 toaster 注释）：后代必须显式 no-drag，
