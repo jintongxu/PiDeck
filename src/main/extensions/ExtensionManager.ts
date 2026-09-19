@@ -17,6 +17,7 @@ import { toWslLinuxPath, toWindowsHostPath, type WslEnvironment } from "../wsl/W
 import type { MainProcessTranslationKey } from "../../shared/i18n/mainProcessCopy";
 import {
 	BUILT_IN_EXTENSIONS,
+	isDisabledBuiltInExtensionSource,
 	readEffectiveBuiltInExtensionsVersion,
 	resolveBuiltInExtensionPath,
 	type BuiltInExtensionPathRoots,
@@ -157,14 +158,19 @@ export class ExtensionManager {
 		const raw = await this.runPi(["list"], 20_000);
 		const parsed = this.parseListOutput(raw);
 		// npm view 是扩展页变慢的主因；默认列表先跳过，只有手动刷新时再查更新。
+		// 已退役的 pi-deck-todo 即使仍留在 pi settings/packages 中也不再展示或参与运行时。
+		// 这样旧配置不会诱导用户恢复一个与 pi-maestro-flow 冲突的 Todo 实现。
+		const activeParsed = parsed.filter((extension) => !isDisabledBuiltInExtensionSource(extension.source));
 		const piInstalled = includeVersionInfo
-			? await Promise.all(parsed.map((extension) => this.enrichExtensionVersion(extension)))
-			: parsed;
+			? await Promise.all(activeParsed.map((extension) => this.enrichExtensionVersion(extension)))
+			: activeParsed;
 
 		// 扫描本地自动发现的扩展（~/.pi/agent/extensions/ 下的 .ts/.js 文件、
 		// index.ts/index.js 目录和 pi.extensions manifest），pi list 只列出通过
 		// pi install 安装的包，不包含本地文件扩展。
-		const localExtensions = await this.scanLocalExtensions();
+		const localExtensions = (await this.scanLocalExtensions()).filter(
+			(extension) => !isDisabledBuiltInExtensionSource(extension.source),
+		);
 
 		// 合并，已通过 pi 安装的优先保留原条目
 		const installedPaths = new Set(piInstalled.map((ext) => ext.path));
@@ -178,19 +184,18 @@ export class ExtensionManager {
 		// 补充：将已禁用/文件缺失的内置扩展也纳入列表，确保用户可在 UI 中重新启用。
 		const existingSources = new Set(merged.map((ext) => ext.source));
 		for (const builtIn of BUILT_IN_EXTENSIONS) {
-			if (!existingSources.has(builtIn)) {
-				// 内置扩展经 -e 从应用资源目录注入；提供 builtInRoots 时补真实磁盘路径，
-				// 让「打开目录」按钮可用（否则 path 为 undefined，UI 无法定位）。
-				merged.push({
-					id: `local:${builtIn}`,
-					source: builtIn,
-					path: this.builtInRoots
-						? resolveBuiltInExtensionPath(builtIn, this.builtInRoots)
-						: undefined,
-					scope: "user",
-					builtIn: true,
-				});
-			}
+			if (isDisabledBuiltInExtensionSource(builtIn) || existingSources.has(builtIn)) continue;
+			// 内置扩展经 -e 从应用资源目录注入；提供 builtInRoots 时补真实磁盘路径，
+			// 让「打开目录」按钮可用（否则 path 为 undefined，UI 无法定位）。
+			merged.push({
+				id: `local:${builtIn}`,
+				source: builtIn,
+				path: this.builtInRoots
+					? resolveBuiltInExtensionPath(builtIn, this.builtInRoots)
+					: undefined,
+				scope: "user",
+				builtIn: true,
+			});
 		}
 
 		// 通过 PiDeck 桌面设置标记启用状态（与 pi disabledExtensions 分离）。
@@ -217,14 +222,15 @@ export class ExtensionManager {
 			}
 		}
 
-		// 仅检测 todo / plan / ask 固定冲突：三方包名含对应关键词时自动禁用内置版。
+		// 仅检测 plan / ask / goal 固定冲突：三方包名含对应关键词时自动禁用内置版。
+		// pi-deck-todo 已退役，不再参与冲突检测。
 		// nul-redirect-fix 等其它内置扩展暂不参与冲突检测，避免 mode 等通用词误伤。
 		// 注意：此处不走 disableBuiltIn（会 invalidateListCache），避免 list 请求中途 generation
 		// 变化导致结果被丢弃后反复重入。
 		const conflicts: { builtIn: string; thirdParty: string }[] = [];
 		let removedChanged = false;
 		for (const [builtInName, keyword] of BUILT_IN_CONFLICT_KEYWORDS) {
-			if (removedBuiltIn.has(builtInName)) continue; // 已移除的不重复检测
+			if (isDisabledBuiltInExtensionSource(builtInName) || removedBuiltIn.has(builtInName)) continue; // 已移除的不重复检测
 			const conflicting = merged.find(
 				(ext) =>
 					!ext.builtIn &&
@@ -761,10 +767,9 @@ export class ExtensionManager {
 
 /**
  * 当前参与冲突检测的内置扩展与关键词。
- * todo / plan / ask：三方包名含关键词即视为功能冲突；其它内置扩展暂不自动互斥。
+ * plan / goal / ask：三方包名含关键词即视为功能冲突；Todo 已由 pi-maestro-flow 统一提供。
  */
 export const BUILT_IN_CONFLICT_KEYWORDS = [
-	["pi-deck-todo.ts", "todo"],
 	["pi-deck-plan-mode.ts", "plan"],
 	["pi-deck-goal-mode.ts", "goal"],
 	["pi-deck-ask-question.ts", "ask"],

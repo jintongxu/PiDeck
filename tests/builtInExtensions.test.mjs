@@ -75,6 +75,28 @@ test("listActiveBuiltInExtensionPaths respects removedBuiltIn and missing files"
 	}
 });
 
+test("retired pi-deck-todo is never returned as an active built-in path", () => {
+	const { listActiveBuiltInExtensionPaths, isDisabledBuiltInExtensionSource } = loadBuiltInExtensionsModule();
+	const root = mkdtempSync(join(tmpdir(), "pideck-retired-todo-"));
+	const extDir = join(root, "resources", "extensions");
+	mkdirSync(extDir, { recursive: true });
+	writeFileSync(join(extDir, "pi-deck-todo.ts"), "// retired todo\n", "utf8");
+	writeFileSync(join(extDir, "pi-deck-plan-mode.ts"), "// plan\n", "utf8");
+	try {
+		const paths = listActiveBuiltInExtensionPaths(
+			{ appPath: root, resourcesPath: root, isDev: true },
+			[],
+		);
+		assert.equal(paths.some((path) => path.endsWith("pi-deck-todo.ts")), false);
+		assert.equal(paths.some((path) => path.endsWith("pi-deck-plan-mode.ts")), true);
+		assert.equal(isDisabledBuiltInExtensionSource("npm:@earendil-works/pi-deck-todo@1.0.0"), true);
+		assert.equal(isDisabledBuiltInExtensionSource("C:/extensions/pi-deck-todo.ts"), true);
+		assert.equal(isDisabledBuiltInExtensionSource("npm:pi-web-access"), false);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("built-in extension removal has a registered IPC handler", () => {
 	const storeIpc = readFileSync("src/main/ipc/storeIpc.ts", "utf8");
 	const extensionsTab = readFileSync("src/renderer/src/config/ExtensionsTab.tsx", "utf8");

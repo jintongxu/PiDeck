@@ -5,6 +5,12 @@
 - [中文 CHANGELOG](https://github.com/ayuayue/PiDeck/blob/main/CHANGELOG.zh-CN.md)
 - [English CHANGELOG](https://github.com/ayuayue/PiDeck/blob/main/CHANGELOG.md)
 
+## v0.7.8
+
+发布时间：2026-09-19
+
+- ✨ **Todo 统一使用 pi-maestro-flow**
+
 ## v0.7.7
 
 发布时间：2026-09-18

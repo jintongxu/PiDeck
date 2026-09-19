@@ -25,6 +25,19 @@ export const BUILT_IN_EXTENSIONS = [
 	"pi-deck-vision.ts",
 ] as const;
 
+/**
+ * 已退役的 Todo 扩展：PiDeck 统一使用 pi-maestro-flow 的 Todo，
+ * 但仍保留在内置清单中以识别旧安装/清理历史副本和兼容旧覆盖层。
+ */
+export const DISABLED_BUILT_IN_EXTENSIONS = ["pi-deck-todo.ts"] as const;
+
+/** 判断扩展 source 是否指向已退役的 pi-deck-todo（含 npm 包、路径和版本后缀）。 */
+export function isDisabledBuiltInExtensionSource(source: string): boolean {
+	const normalized = source.trim().replace(/\\/g, "/").replace(/^(?:npm|file|github|git|https?):/i, "");
+	const leaf = normalized.split("/").pop()?.toLowerCase() ?? "";
+	return leaf === "pi-deck-todo.ts" || leaf === "pi-deck-todo.js" || leaf === "pi-deck-todo" || leaf.startsWith("pi-deck-todo@");
+}
+
 export type BuiltInExtensionName = (typeof BUILT_IN_EXTENSIONS)[number];
 
 export type BuiltInExtensionPathRoots = {
@@ -58,7 +71,7 @@ export function resolveBuiltInExtensionsOverlayDir(userDataDir: string): string 
 /**
  * 覆盖层可用性缓存（单个目录，进程内）。
  *
- * 覆盖层是**完整快照**：扩展之间存在相对 import（pi-deck-todo.ts → ./pi-deck-todo-state.ts），
+ * 覆盖层是**完整快照**：扩展之间可能存在相对 import，
  * 只判断「同名文件存在」不够——缺一个文件就会让 pi 解析不到依赖。因此必须整份校验
  * （清单可解析 + 每个声明的文件 bytes/sha256 吻合），校验不过一律当没有覆盖层。
  *
@@ -149,7 +162,7 @@ export function listActiveBuiltInExtensionPaths(
 	);
 	const paths: string[] = [];
 	for (const name of BUILT_IN_EXTENSIONS) {
-		if (removed.has(name)) continue;
+		if (removed.has(name) || DISABLED_BUILT_IN_EXTENSIONS.some((disabled) => disabled === name)) continue;
 		const fullPath = resolveBuiltInExtensionPath(name, roots);
 		if (!existsSync(fullPath)) continue;
 		paths.push(fullPath);

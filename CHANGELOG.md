@@ -1,3 +1,8 @@
+## v0.7.8 - 2026-09-19
+
+### 🐛 Fixes
+- **Use pi-maestro-flow for Todo management** — PiDeck no longer loads or recommends the retired `pi-deck-todo` extension. Legacy configurations are filtered safely while historical Todo data remains readable.
+
 ## v0.7.7 - 2026-09-18
 
 ### 🚀 New Features

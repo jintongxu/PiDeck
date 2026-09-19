@@ -193,6 +193,29 @@ test("内置扩展注入：removedBuiltInExtensions 剔除 + 资源缺失跳过"
 	}
 });
 
+test("旧 pi-deck-todo 配置会强制白名单并被过滤，pi-maestro-flow 保持可用", () => {
+	const { resolveEnabledExtensionPaths } = loadResolverModule();
+	const { root, home, cwd, put } = setupFixtures();
+	try {
+		const maestroPath = put(".pi/agent/extensions/pi-maestro-flow.ts", "// maestro todo\n");
+		put(".pi/agent/extensions/pi-deck-todo.ts", "// retired todo\n");
+		put(".pi/agent/settings.json", JSON.stringify({
+			extensions: ["pi-deck-todo.ts", "pi-maestro-flow.ts"],
+		}));
+		const result = resolveEnabledExtensionPaths({
+			agentHomeDir: home,
+			cwd,
+			disabled: [],
+			removedBuiltInExtensions: [],
+			builtInRoots: { appPath: root, resourcesPath: root, isDev: true },
+		});
+		assert.ok(result);
+		same(result, [maestroPath]);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("全部禁用时返回空数组（≠ null）：调用方须仍加 --no-extensions", () => {
 	const { resolveEnabledExtensionPaths } = loadResolverModule();
 	const { root, home, cwd, put } = setupFixtures();

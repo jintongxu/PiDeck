@@ -3,6 +3,7 @@ import { homedir } from "node:os";
 import { basename, join, relative, sep } from "node:path";
 import type { DisabledExtensionEntry } from "../../shared/types";
 import {
+	isDisabledBuiltInExtensionSource,
 	listActiveBuiltInExtensionPaths,
 	type BuiltInExtensionPathRoots,
 } from "./builtInExtensions";
@@ -18,6 +19,34 @@ import { resolveConfiguredPackageResources } from "../packageResourceResolver";
 import { discoverExtensionEntries } from "./extensionDiscovery";
 
 const CONFIG_DIR_NAME = ".pi";
+
+function containsDisabledBuiltInSource(value: unknown): boolean {
+	if (!Array.isArray(value)) return false;
+	return value.some((entry) => {
+		const source = typeof entry === "string"
+			? entry
+			: entry && typeof entry === "object" && !Array.isArray(entry) && "source" in entry
+				? entry.source
+				: undefined;
+		return typeof source === "string" && isDisabledBuiltInExtensionSource(source);
+	});
+}
+
+/**
+ * 仅在旧 Todo 扩展仍被配置/发现时强制进入白名单模式，
+ * 这样可以过滤它而不改变没有该扩展的项目原有自动发现行为。
+ */
+function hasDisabledBuiltInExtensionConfigured(
+	userSettings: Record<string, unknown>,
+	projectSettings: Record<string, unknown>,
+	userExtensionDir: string,
+	projectExtensionDir: string | undefined,
+): boolean {
+	if (containsDisabledBuiltInSource(userSettings.packages) || containsDisabledBuiltInSource(userSettings.extensions)) return true;
+	if (containsDisabledBuiltInSource(projectSettings.packages) || containsDisabledBuiltInSource(projectSettings.extensions)) return true;
+	if (discoverExtensionEntries(userExtensionDir).some((path) => isDisabledBuiltInExtensionSource(autoExtensionSource(userExtensionDir, path)))) return true;
+	return projectExtensionDir !== undefined && discoverExtensionEntries(projectExtensionDir).some((path) => isDisabledBuiltInExtensionSource(autoExtensionSource(projectExtensionDir, path)));
+}
 
 export type EnabledExtensionResolverOptions = {
 	/** WSL 场景传入 Windows 侧 home；缺省 homedir()。 */
@@ -50,14 +79,27 @@ export function resolveEnabledExtensionPaths(
 	const projectDisabled = includeProjectResources
 		? readProjectDisabledExtensionSources(projectBaseDir)
 		: [];
+	const agentDir = join(options.agentHomeDir?.trim() || homedir(), CONFIG_DIR_NAME, "agent");
+	const userSettingsFile = join(agentDir, "settings.json");
+	const projectSettingsFile = join(cwd, CONFIG_DIR_NAME, "settings.json");
+	const userSettings = readSettingsObject(userSettingsFile);
+	const projectSettings = includeProjectResources ? readSettingsObject(projectSettingsFile) : {};
+	const userExtensionDir = join(agentDir, "extensions");
+	const projectExtensionDir = includeProjectResources ? join(cwd, CONFIG_DIR_NAME, "extensions") : undefined;
+	const mustFilterRetiredTodo = hasDisabledBuiltInExtensionConfigured(
+		userSettings,
+		projectSettings,
+		userExtensionDir,
+		projectExtensionDir,
+	);
 	if (
 		includeProjectResources &&
 		disabled.length === 0 &&
 		inheritedDisabled.length === 0 &&
-		projectDisabled.length === 0
+		projectDisabled.length === 0 &&
+		!mustFilterRetiredTodo
 	) return null;
 
-	const agentDir = join(options.agentHomeDir?.trim() || homedir(), CONFIG_DIR_NAME, "agent");
 	const effectiveDisabled: DisabledExtensionEntry[] = [
 		...disabled,
 		...inheritedDisabled.map<DisabledExtensionEntry>((source) => ({ scope: "user", source })),
@@ -72,15 +114,13 @@ export function resolveEnabledExtensionPaths(
 	const paths: string[] = [];
 	const seen = new Set<string>();
 	const addPath = (path: string) => {
-		if (!path || seen.has(path)) return;
+		// pi-deck-todo 已退役：即使用户 settings/packages 仍声明旧扩展，
+		// 白名单也不得把它重新注入；Todo 统一由 pi-maestro-flow 提供。
+		if (!path || isDisabledBuiltInExtensionSource(path) || seen.has(path)) return;
 		seen.add(path);
 		paths.push(path);
 	};
 
-	const userSettingsFile = join(agentDir, "settings.json");
-	const projectSettingsFile = join(projectBaseDir, "settings.json");
-	const userSettings = readSettingsObject(userSettingsFile);
-	const projectSettings = includeProjectResources ? readSettingsObject(projectSettingsFile) : {};
 	const { plain: userPlain, patterns: userPatterns } = splitResourceEntries(
 		Array.isArray(userSettings.extensions) ? userSettings.extensions : [],
 	);
@@ -89,24 +129,29 @@ export function resolveEnabledExtensionPaths(
 	);
 
 	// Auto discovery uses per-scope pattern bases (`~/.pi/agent` and `<cwd>/.pi`).
-	const userExtensionDir = join(agentDir, "extensions");
 	for (const path of discoverAutoExtensionEntries(userExtensionDir, agentDir, userPatterns)) {
-		if (isEnabled("user", autoExtensionSource(userExtensionDir, path))) addPath(path);
+		if (
+			isEnabled("user", autoExtensionSource(userExtensionDir, path)) &&
+			!isDisabledBuiltInExtensionSource(autoExtensionSource(userExtensionDir, path))
+		) addPath(path);
 	}
 	if (includeProjectResources) {
 		const projectExtensionDir = join(projectBaseDir, "extensions");
 		for (const path of discoverAutoExtensionEntries(projectExtensionDir, projectBaseDir, projectPatterns)) {
-			if (isEnabled("project", autoExtensionSource(projectExtensionDir, path))) addPath(path);
+			if (
+				isEnabled("project", autoExtensionSource(projectExtensionDir, path)) &&
+				!isDisabledBuiltInExtensionSource(autoExtensionSource(projectExtensionDir, path))
+			) addPath(path);
 		}
 	}
 
 	// Explicit settings sources can point to a file or extension directory.
 	for (const candidate of collectSettingsExtensionPaths(agentDir, userPlain, userPatterns)) {
-		if (isEnabled("user", candidate.source)) addPath(candidate.path);
+		if (isEnabled("user", candidate.source) && !isDisabledBuiltInExtensionSource(candidate.source)) addPath(candidate.path);
 	}
 	if (includeProjectResources) {
 		for (const candidate of collectSettingsExtensionPaths(projectBaseDir, projectPlain, projectPatterns)) {
-			if (isEnabled("project", candidate.source)) addPath(candidate.path);
+			if (isEnabled("project", candidate.source) && !isDisabledBuiltInExtensionSource(candidate.source)) addPath(candidate.path);
 		}
 	}
 
@@ -119,7 +164,11 @@ export function resolveEnabledExtensionPaths(
 		projectBaseDir: includeProjectResources ? projectBaseDir : undefined,
 		collectDirectory: (directory) => discoverAutoExtensionEntries(directory),
 	})) {
-		if (resource.enabled && isEnabled(resource.scope, resource.source)) addPath(resource.path);
+		if (
+			resource.enabled &&
+			isEnabled(resource.scope, resource.source) &&
+			!isDisabledBuiltInExtensionSource(resource.source)
+		) addPath(resource.path);
 	}
 
 	for (const path of listActiveBuiltInExtensionPaths(options.builtInRoots, options.removedBuiltInExtensions)) {

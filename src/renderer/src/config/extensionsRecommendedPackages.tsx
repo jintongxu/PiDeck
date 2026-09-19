@@ -9,7 +9,6 @@ import { writeClipboard } from "../utils/clipboard";
 
 /** PiDeck 内置扩展名 → source 文件名映射 */
 const PIDEK_BUILTIN_SOURCE: Record<string, string> = {
-	"pi-deck-todo": "pi-deck-todo.ts",
 	"pi-deck-plan-mode": "pi-deck-plan-mode.ts",
 	"pi-deck-goal-mode": "pi-deck-goal-mode.ts",
 	"pi-deck-ask-question": "pi-deck-ask-question.ts",
@@ -19,16 +18,6 @@ const PIDEK_BUILTIN_SOURCE: Record<string, string> = {
 /** 推荐扩展包：描述走 i18n（descriptionKey），不在组件里硬编码中英文案。 */
 type RecommendedPackage = Omit<PiPackageInfo, "description"> & { descriptionKey: TranslationKey };
 const RECOMMENDED_PACKAGES: RecommendedPackage[] = [
-	{
-		name: "pi-deck-todo",
-		descriptionKey: "config.extRecommended.piDeckTodo",
-		installCmd: "npm:@earendil-works/pi-deck-todo",
-		tags: ["extension"],
-		downloads: "",
-		updated: "",
-		npmUrl: "",
-		repoUrl: "https://github.com/ayuayue/PiDeck",
-	},
 	{
 		name: "pi-deck-plan-mode",
 		descriptionKey: "config.extRecommended.piDeckPlanMode",

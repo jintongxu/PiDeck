@@ -79,12 +79,10 @@
 
 ## 📋 Changelog
 
-> **Latest: v0.7.7** (2026-09-18)
+> **Latest: v0.7.8** (2026-09-19)
 
-### v0.7.7 Release Highlights
-- 🚀 **Project ideas inbox**
-- 🚀 **Save ideas from conversations**
-- ✨ **Windows release validation**
+### v0.7.8 Release Highlights
+- ✨ **Use pi-maestro-flow for Todo management**
 
 [View Full Changelog →](CHANGELOG.md)
 

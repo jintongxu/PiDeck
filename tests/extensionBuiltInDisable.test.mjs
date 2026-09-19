@@ -66,6 +66,10 @@ function loadExtensionManager({ homeDir, runPiOutput = "", fsOverrides = {} } = 
 			if (id === "./builtInExtensions") {
 				// ExtensionManager 只需要内置名列表；避免 vm 沙箱解析相对 TS 路径失败。
 				return {
+					isDisabledBuiltInExtensionSource: (source) => {
+						const leaf = String(source).replace(/\\/g, "/").split("/").pop()?.toLowerCase() ?? "";
+						return leaf === "pi-deck-todo.ts" || leaf === "pi-deck-todo.js" || leaf === "pi-deck-todo" || leaf.startsWith("pi-deck-todo@");
+					},
 					BUILT_IN_EXTENSIONS: [
 						"pi-deck-ask-question.ts",
 						"pi-deck-nul-redirect-fix.ts",
@@ -126,7 +130,7 @@ test("disableBuiltIn records removal and deletes user extension file", async () 
 	rmSync(fixtureHome, { recursive: true, force: true });
 });
 
-test("list auto-disables built-in todo and deletes file when third-party rpiv-todo is present", async () => {
+test("list excludes the retired built-in todo even when third-party todo is present", async () => {
 	const fixtureHome = mkdtempSync(join(tmpdir(), "pideck-conflict-todo-"));
 	const extensionsDir = join(fixtureHome, ".pi", "agent", "extensions");
 	mkdirSync(extensionsDir, { recursive: true });
@@ -175,11 +179,10 @@ test("list auto-disables built-in todo and deletes file when third-party rpiv-to
 	assert.equal(existsSync(builtinPath), true);
 	const result = await manager.list(false);
 
-	assert.equal(settings.removedBuiltInExtensions.includes("pi-deck-todo.ts"), true);
-	assert.equal(existsSync(builtinPath), false, "conflicting built-in file must be deleted");
-	assert.ok(result.conflicts?.some((c) => c.builtIn === "pi-deck-todo.ts"));
-	const builtin = result.extensions.find((e) => e.source === "pi-deck-todo.ts");
-	assert.equal(builtin?.enabled, false);
+	assert.equal(settings.removedBuiltInExtensions.includes("pi-deck-todo.ts"), false);
+	assert.equal(existsSync(builtinPath), true, "list does not own legacy-file migration");
+	assert.equal(result.conflicts?.some((c) => c.builtIn === "pi-deck-todo.ts") ?? false, false);
+	assert.equal(result.extensions.some((e) => e.source === "pi-deck-todo.ts"), false);
 
 	rmSync(fixtureHome, { recursive: true, force: true });
 });
