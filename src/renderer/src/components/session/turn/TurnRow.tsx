@@ -1,8 +1,8 @@
 import {
   messageEntryId,
 } from "../../../utils/sessionCommands";
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { ChevronUp, Clock, Lightbulb, Share, SquarePen, Trash } from "lucide-react";
+import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { ChevronUp, Clock, Lightbulb, MessageCircle, Share, SquarePen, Trash } from "lucide-react";
 import { atom, useAtomValue, useSetAtom } from "jotai";
 import { selectAtom } from "jotai/utils";
 import type { AgentBackend, ImageContent, ProjectIdeaCapture } from "../../../../../shared/types";
@@ -31,6 +31,7 @@ import { ThinkingStep } from "./ThinkingStep";
 import { ToolStep } from "./ToolStep";
 import { useTurnExecution } from "./useTurnExecution";
 import type { DiffFileHandler } from "../ToolCallComponents";
+import { resolveSideButtonJump } from "../timeline/sideButtonNavigation";
 
 /** sessionId 为空时的占位 atom：恒 false（无会话不挂 live）。 */
 const NO_LIVE_TEXT_ATOM = atom(false);
@@ -73,6 +74,7 @@ export type TurnRowProps = {
 	onEditMessage?: (messageId: string, newText: string, entryId?: string) => void;
 	onDeleteMessage?: (messageId: string, entryId?: string) => void;
 	onSaveProjectIdea?: (capture: ProjectIdeaCapture) => void;
+	onJumpToMessage?: (messageId: string, alignment?: "top" | "center" | "bottom") => void;
 	/** 当前模型回合活跃时为 true，驱动正文/过程的 live 渲染与完成判定。 */
 	agentRunning?: boolean;
 	/** 会话 runtime 仍被占用（如压缩）；仅阻止会改写历史的操作，不把已结束回答重置为 live。 */
@@ -283,6 +285,28 @@ export const TurnRow = memo(
 		.join("\n\n");
 	const containsImageGen = assistantMessages.some((item) => Boolean(item.message.meta?.imageGen));
 
+	const turnStartMessageId = run.triggerUserMessageId;
+	const turnEndMessageId = run.id;
+	const resolveSideButtonAction = (button: number) =>
+		resolveSideButtonJump(button, turnStartMessageId, turnEndMessageId);
+	const preventSideButtonNavigation = (event: ReactMouseEvent<HTMLElement>) => {
+		if (event.button !== 3 && event.button !== 4) return;
+		if (!resolveSideButtonAction(event.button)) return;
+		event.preventDefault();
+		event.stopPropagation();
+	};
+	const handleSideButtonMouseUp = (event: ReactMouseEvent<HTMLElement>) => {
+		if (event.button !== 3 && event.button !== 4) return;
+		const jump = resolveSideButtonAction(event.button);
+		if (!jump) return;
+		event.preventDefault();
+		event.stopPropagation();
+		// Commit only after the press is complete. Jumping on mousedown moves the
+		// document under the pointer, so Chromium's following auxclick can land on
+		// another TurnRow and submit a second, different jump.
+		props.onJumpToMessage?.(jump.messageId, jump.alignment);
+	};
+
 	// 本轮没有任何可渲染内容时不输出空容器
 	if (displayItems.length === 0 && allImages.length === 0) return null;
 
@@ -313,7 +337,10 @@ export const TurnRow = memo(
 						? "turn-row--complete"
 						: "turn-row--pending"
 			} ${props.fresh ? "turn-row--fresh" : ""} ${props.topFresh ? "turn-row--top-fresh" : ""}`}
-			data-message-id={run.id}
+			data-run-id={run.id}
+			onMouseDown={preventSideButtonNavigation}
+			onMouseUp={handleSideButtonMouseUp}
+			onAuxClick={preventSideButtonNavigation}
 		>
 			<div className="flex min-w-0 flex-col gap-3">
 				{/* 行头：头像 + Pi/DSH 署名 + 时间。耗时不放行头——回复生成时用户视线在底部，
@@ -456,6 +483,7 @@ export const TurnRow = memo(
 						/>
 					</div>
 				))}
+				<span data-local-anchor={`answer-end:${run.id}`} aria-hidden="true" className="block h-0 w-0" />
 
 				{/* 操作栏 */}
 				{mergedText && !editing && (
@@ -465,6 +493,19 @@ export const TurnRow = memo(
 							markdown={mergedText}
 							targetRef={rowRef}
 						/>}
+						{props.onJumpToMessage && run.triggerUserMessageId && (
+							<Button
+								type="button"
+								variant="ghost"
+								size="icon-sm"
+								className="turn-row-action-btn size-7 rounded-sm text-muted-foreground hover:bg-muted hover:text-foreground"
+								onClick={() => props.onJumpToMessage?.(run.triggerUserMessageId!)}
+								title={t("projectIdeas.jumpToQuestion")}
+								aria-label={t("projectIdeas.jumpToQuestion")}
+							>
+								<MessageCircle size={14} />
+							</Button>
+						)}
 						{props.onSaveProjectIdea && (
 							<Button
 								type="button"
@@ -576,6 +617,7 @@ function turnRowPropsEqual(prev: TurnRowProps, next: TurnRowProps): boolean {
 		prev.isLastAgentRun === next.isLastAgentRun &&
 		prev.autoCollapseTick === next.autoCollapseTick &&
 		prev.onOpenFile === next.onOpenFile &&
-		prev.onSaveProjectIdea === next.onSaveProjectIdea
+		prev.onSaveProjectIdea === next.onSaveProjectIdea &&
+		prev.onJumpToMessage === next.onJumpToMessage
 	);
 }

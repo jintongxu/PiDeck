@@ -67,7 +67,13 @@ export function sliceLastAgentRuns<T extends { kind: string } & { items?: readon
 		}
 		runs += 1;
 		if (runs >= maxTurns) {
-			return index === 0 ? (items as T[]) : items.slice(index);
+			// Keep the non-run prelude immediately before the first retained run.
+			// groupToolMessages places the triggering user MessageItem there; cutting
+			// it away makes a run's question impossible to target until another
+			// window expansion/click happens.
+			let start = index;
+			while (start > 0 && items[start - 1]?.kind !== "agent-run") start -= 1;
+			return start === 0 ? (items as T[]) : items.slice(start);
 		}
 	}
 	return items as T[];

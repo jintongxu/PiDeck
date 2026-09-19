@@ -235,7 +235,7 @@ export const sessionMessageCacheBySessionIdAtomFamily = atomFamily(
  * 在底部跟流切走的会话不存锚点，切回继续跟底。
  */
 export type SessionScrollAnchor = {
-	/** 锚点行 id（timeline 内 [data-message-id] 的值：可能是 run id 或消息 id） */
+	/** 锚点行 id（timeline 内 data-run-id 或 user message data-message-id 的值） */
 	messageId: string;
 	/** 锚点行顶边相对视口顶部的偏移（px），恢复时按此对齐 */
 	offsetTop: number;

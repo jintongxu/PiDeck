@@ -86,6 +86,7 @@ export const zhCN = {
   "projectIdeas.delete": "删除想法",
   "projectIdeas.continue": "继续处理",
   "projectIdeas.saveFromMessage": "保存为项目想法",
+  "projectIdeas.jumpToQuestion": "回到问题",
   "projectIdeas.saveFromSelection": "保存选中文本为项目想法",
   "projectIdeas.saveFromMessageUnavailable": "当前会话没有关联项目，无法保存为项目想法",
   "projectIdeas.sourceMessage": "来源：会话消息",

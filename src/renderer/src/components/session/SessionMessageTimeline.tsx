@@ -40,6 +40,7 @@ import {
   canLoadSessionTimelineMore,
   deriveSessionSurfaceRuntime,
   type SessionTimelineController,
+  type TimelineJumpAlignment,
 } from "../../hooks/useSessionTimelineController";
 import { t } from "../../i18n";
 import { cn } from "../../lib/utils";
@@ -131,6 +132,7 @@ type TimelineInteractionProps = {
   onForkMessage?: UserBubbleProps["onForkMessage"];
   onRewindToMessage?: UserBubbleProps["onRewindToMessage"];
   onSaveProjectIdea?: (capture: ProjectIdeaCapture) => void;
+  onJumpToMessage?: (messageId: string, alignment?: TimelineJumpAlignment) => void;
   forkingMessageId?: string | null;
   onToast: (message: string) => void;
   /** 新建 Agent 的空时间线快捷操作：只写入 composer，不自动投递。 */
@@ -1022,6 +1024,7 @@ export function SessionMessageTimeline(props: SessionMessageTimelineProps) {
                     onEditMessage={props.onEditMessage}
                     onDeleteMessage={props.onDeleteMessage}
                     onSaveProjectIdea={saveProjectIdea}
+                    onJumpToMessage={props.onJumpToMessage}
                     onEnterMultiSelect={handleEnterMultiSelect}
                   />
                 );

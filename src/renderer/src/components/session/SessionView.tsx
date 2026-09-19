@@ -1,5 +1,5 @@
 import { useAtomValue } from "jotai";
-import { useEffect, useMemo, useRef, type CSSProperties, type RefObject, type ReactNode } from "react";
+import { useEffect, useRef, type CSSProperties, type RefObject, type ReactNode } from "react";
 import {
   type GroupImperativeHandle,
   type PanelImperativeHandle,
@@ -8,12 +8,12 @@ import {
   ResizablePanel,
   ResizablePanelGroup,
 } from "../ui-shadcn/resizable";
+import type { TimelineJumpAlignment } from "../../hooks/useSessionTimelineController";
 import type { GitBranchInfo, ImageContent, TerminalTarget } from "../../../../shared/types";
 import type { SessionTimelineController } from "../../hooks/useSessionTimelineController";
 import { isLanWeb, desktopApi as api } from "../../desktopApi";
 import { SessionHeader } from "./SessionHeader";
 import { SessionBranchBar } from "./SessionBranchBar";
-import { SessionFilesStrip } from "./SessionFilesStrip";
 import { SessionGoalStrip } from "./SessionGoalStrip";
 import { SessionSubagentsStrip } from "./SessionSubagentsStrip";
 import { SessionTodoStrip } from "./SessionTodoStrip";
@@ -34,8 +34,6 @@ import {
 import { projectByIdAtomFamily, sessionRecordByIdAtomFamily } from "../../atoms";
 import type { EnqueuePromptSnapshot } from "../../hooks/useSessionSend";
 import type { ProjectIdeaCapture } from "../../../../shared/types";
-import { groupToolMessages } from "../app/AppUtils";
-import type { AgentRunItem } from "./timeline/types";
 import { countUserTurns } from "./timeline/turnRenderWindow";
 
 // terminal 程序化布局保护窗口（ms）：setLayout 后该窗口内的 terminal
@@ -83,6 +81,7 @@ export type SessionViewProps = {
   onForkMessage?: (message: any) => void;
   onRewindToMessage?: (message: any) => void;
   onSaveProjectIdea?: (capture: ProjectIdeaCapture) => void;
+  onJumpToMessage?: (messageId: string, alignment?: TimelineJumpAlignment) => void;
   forkingMessageId?: string | null;
   onToast: (message: string) => void;
   onQuickPrompt?: (prompt: string) => void;
@@ -153,6 +152,7 @@ export function SessionView({
   onForkMessage,
   onRewindToMessage,
   onSaveProjectIdea,
+  onJumpToMessage,
   forkingMessageId,
   onToast,
   onQuickPrompt,
@@ -201,24 +201,6 @@ export function SessionView({
     messageCount: sessionTimeline.messages.length,
     isConversationLoading: sessionTimeline.isSurfaceLoading,
   });
-  // 仅显示最近一轮的修改，避免把整个会话历史堆到输入框上方；切换到新一轮后，
-  // strip 会按新的 run 身份重置为默认折叠。
-  const latestAgentRun = useMemo<AgentRunItem | undefined>(() => {
-    const displayItems = groupToolMessages(sessionTimeline.messages);
-    let latestRun: AgentRunItem | undefined;
-    let latestUserTimestamp = 0;
-    for (const item of displayItems) {
-      if (item.kind === "message" && item.message.role === "user") {
-        latestUserTimestamp = Math.max(latestUserTimestamp, item.message.timestamp);
-      } else if (item.kind === "agent-run") {
-        latestRun = item;
-      }
-    }
-    // 新问题已发出但 Agent 尚未产生新 run 时，隐藏上一轮文件，避免误导。
-    return latestRun && latestUserTimestamp <= latestRun.endedAt
-      ? latestRun
-      : undefined;
-  }, [sessionTimeline.messages]);
   const sessionPanels = { terminal: terminalPanelVisible };
   const timelineColumnMinSize = bottomComposerVisible
     ? TIMELINE_MIN_HEIGHT + COMPOSER_MIN_HEIGHT
@@ -332,6 +314,7 @@ export function SessionView({
                 onForkMessage,
                 onRewindToMessage,
                 onSaveProjectIdea,
+                onJumpToMessage,
                 forkingMessageId,
                 onToast,
                 onQuickPrompt,
@@ -360,12 +343,6 @@ export function SessionView({
                 widgets={
                   <>
                     <SessionTodoStrip sessionId={sessionId} />
-                    <SessionFilesStrip
-                      sessionId={sessionId}
-                      run={latestAgentRun}
-                      onOpenFile={onOpenFile}
-                      onDiffFile={onDiffFile}
-                    />
                     <SessionSubagentsStrip
                       sessionId={sessionId}
                       onOpenChildSession={onOpenBranchSession}

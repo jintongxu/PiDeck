@@ -87,6 +87,7 @@ export const enUS: Record<TranslationKey, string> = {
   "projectIdeas.delete": "Delete idea",
   "projectIdeas.continue": "Continue",
   "projectIdeas.saveFromMessage": "Save as project idea",
+  "projectIdeas.jumpToQuestion": "Jump to question",
   "projectIdeas.saveFromSelection": "Save selection as project idea",
   "projectIdeas.saveFromMessageUnavailable": "This session has no project, so it cannot be saved as a project idea",
   "projectIdeas.sourceMessage": "Source: session message",

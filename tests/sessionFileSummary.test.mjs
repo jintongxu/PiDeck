@@ -177,16 +177,17 @@ test("fileChangeToDiffLines: write yields all-added lines, edit yields removed+a
 	]);
 });
 
-test("file changes render through the files strip, not a per-strip owner", () => {
+test("file changes are no longer mounted as a session surface", () => {
 	const timeline = readFileSync("src/renderer/src/components/session/SessionMessageTimeline.tsx", "utf8");
 	assert.ok(!timeline.includes("TurnFileChanges"), "timeline should not own the file strip");
 	const turnRow = readFileSync("src/renderer/src/components/session/turn/TurnRow.tsx", "utf8");
 	assert.doesNotMatch(turnRow, /TurnFileChanges/);
 	const sessionView = readFileSync("src/renderer/src/components/session/SessionView.tsx", "utf8");
-	assert.match(sessionView, /SessionFilesStrip/);
-	assert.match(sessionView, /latestAgentRun/);
+	const startSurface = readFileSync("src/renderer/src/components/session/SessionStartSurface.tsx", "utf8");
+	assert.doesNotMatch(sessionView, /SessionFilesStrip|latestAgentRun/);
+	assert.doesNotMatch(startSurface, /SessionFilesStrip/);
 	const strip = readFileSync("src/renderer/src/components/session/SessionFilesStrip.tsx", "utf8");
-	assert.match(strip, /useSessionFileChanges\(/, "files strip should use the session-level file changes hook");
+	assert.match(strip, /useSessionFileChanges\(/, "file change collection remains available for non-UI consumers");
 	assert.match(strip, /data-testid="session-files-strip"/);
 	assert.doesNotMatch(strip, /MAX_VISIBLE_FILES|moreFiles/, "no truncation/more-files UI in the files strip");
 });

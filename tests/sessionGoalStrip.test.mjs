@@ -32,21 +32,15 @@ test("goal strip is a 36px independent card in the same family as todo", () => {
   assert.doesNotMatch(source, /createDshGoal/);
 });
 
-test("session view and start surface mount the strips then goal", () => {
+test("session view and start surface omit the file changes strip", () => {
   const view = viewSource();
   const start = startSource();
   assert.match(view, /<SessionTodoStrip sessionId=\{sessionId\} \/>/);
-  assert.match(view, /<SessionFilesStrip[\s\S]*?run=\{latestAgentRun\}[\s\S]*?onDiffFile=\{onDiffFile\}/);
+  assert.doesNotMatch(view, /SessionFilesStrip|latestAgentRun/);
   assert.match(view, /<SessionSubagentsStrip[\s\S]*?onOpenChildSession=\{onOpenBranchSession\}/);
   assert.match(view, /<SessionGoalStrip sessionId=\{sessionId\} \/>/);
-  assert.ok(
-    view.indexOf("<SessionTodoStrip") < view.indexOf("<SessionFilesStrip") &&
-    view.indexOf("<SessionFilesStrip") < view.indexOf("<SessionSubagentsStrip") &&
-    view.indexOf("<SessionSubagentsStrip") < view.indexOf("<SessionGoalStrip"),
-    "strip order must be todo → files → subagents → goal in SessionView widgets",
-  );
   assert.match(start, /<SessionTodoStrip sessionId=\{props\.sessionId\} \/>/);
-  assert.match(start, /<SessionFilesStrip sessionId=\{props\.sessionId\} \/>/);
+  assert.doesNotMatch(start, /SessionFilesStrip/);
   assert.match(start, /<SessionSubagentsStrip sessionId=\{props\.sessionId\} \/>/);
   assert.match(start, /<SessionGoalStrip sessionId=\{props\.sessionId\} \/>/);
 });

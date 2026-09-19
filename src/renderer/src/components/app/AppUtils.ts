@@ -168,6 +168,8 @@ export type AgentRunItem = {
 	id: string;
 	items: Array<MessageItem | ToolGroupItem | ThinkingGroupItem>;
 	startedAt: number;
+	/** Stable ID of the user message that triggered this run, if one exists. */
+	triggerUserMessageId?: string;
 	endedAt: number;
 	/** 本轮内 ask_question 的用户等待总时长（ms）：由已完成的 ask 工具消息推导，
 	 *  回复耗时（endedAt - startedAt）需扣除这部分，等待段不计入 agent 处理时间。 */
@@ -253,6 +255,7 @@ export function sameAgentRunForRender(previous: AgentRunItem, next: AgentRunItem
 		previous.startedAt !== next.startedAt ||
 		previous.endedAt !== next.endedAt ||
 		previous.askWaitMs !== next.askWaitMs ||
+		previous.triggerUserMessageId !== next.triggerUserMessageId ||
 		previous.askPending !== next.askPending ||
 		previous.askPendingAt !== next.askPendingAt ||
 		previous.items.length !== next.items.length
@@ -325,6 +328,8 @@ export function groupToolMessages(
 	let runEndedAt = 0;
 	/** 当前回合的触发用户消息时间戳，用于替代 assistant/tool 时间戳作为回合起点 */
 	let lastUserTimestamp = 0;
+	/** 当前回合的触发用户消息 ID，用于从回答跳回对应问题。 */
+	let lastUserMessageId: string | undefined;
 
 	function isThinkingOnly(message: ChatMessage) {
 		return (
@@ -411,6 +416,7 @@ export function groupToolMessages(
 			items: currentRun,
 			// 回合起点优先用触发它的用户消息时间戳，无用户消息时回退到 run 内首条消息时间戳
 			startedAt: lastUserTimestamp || runStartedAt,
+			...(lastUserMessageId !== undefined ? { triggerUserMessageId: lastUserMessageId } : {}),
 			endedAt: runEndedAt || runStartedAt,
 			askWaitMs,
 			askPending,
@@ -420,6 +426,7 @@ export function groupToolMessages(
 		runStartedAt = 0;
 		runEndedAt = 0;
 		lastUserTimestamp = 0;
+		lastUserMessageId = undefined;
 	}
 
 	function appendRunMessage(message: ChatMessage) {
@@ -557,8 +564,9 @@ export function groupToolMessages(
 				flushRun();
 			}
 			result.push({ kind: "message", message });
-			// 记录触发回合的用户消息时间戳，作为回合的真实起点
+			// 记录触发回合的用户消息，作为回合的真实起点和回跳目标
 			lastUserTimestamp = message.timestamp;
+			lastUserMessageId = message.id;
 		}
 	}
 	// 最后 flush 当前 run（含合并后的暂存 run）

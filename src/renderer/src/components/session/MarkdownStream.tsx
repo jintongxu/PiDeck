@@ -169,7 +169,9 @@ export const MarkdownStream = memo(function MarkdownStream(props: {
 	// 因此 settle 后先保持流式末帧的轻量渲染，requestIdleCallback 空闲时再切全量
 	// （timeout 兜底防永久延迟）；静态场景（从未流式，如 FileDiffViewer）不延迟。
 	const wasStreamingRef = useRef(false);
-	const [settleFull, setSettleFull] = useState(false);
+	// 从历史/磁盘首次挂载的静态消息首帧就用完整树；只有真正经历过流式的实例
+	// 才在结束后延迟重插件。否则会话刚打开时 light→full 的被动切换会改变锚点上方高度。
+	const [settleFull, setSettleFull] = useState(() => !props.isStreaming);
 	const effectiveLight = props.light || isStreamingNow || !settleFull ||
 		shouldKeepLightOnSettle(props.text.length);
 	useEffect(() => {

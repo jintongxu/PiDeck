@@ -18,33 +18,24 @@ const stripSource = () =>
 const zh = () => readFileSync("src/renderer/src/i18n/rendererCopy.zh-CN.ts", "utf8");
 const en = () => readFileSync("src/renderer/src/i18n/rendererCopy.en-US.ts", "utf8");
 
-test("composer forwards widgets slot; session surfaces mount the three strips then goal", () => {
+test("composer forwards widgets slot; session surfaces omit the file changes strip", () => {
   const composer = composerSource();
   const view = viewSource();
   const start = startSource();
   // ComposerArea：widgets prop 透传到 ComposerMeasuredExtras
   assert.match(composer, /widgets\?: ReactNode/);
   assert.match(composer, /widgets=\{props\.widgets \?\? null\}/);
-  // SessionView：todo → files → subagents → goal，独立横栏卡顺序挂载
+  // SessionView：文件修改卡隐藏，其余会话横栏保持
   assert.match(view, /<SessionTodoStrip sessionId=\{sessionId\} \/>/);
-  assert.match(
-    view,
-    /<SessionFilesStrip[\s\S]*?run=\{latestAgentRun\}[\s\S]*?onDiffFile=\{onDiffFile\}/,
-  );
+  assert.doesNotMatch(view, /SessionFilesStrip|latestAgentRun/);
   assert.match(
     view,
     /<SessionSubagentsStrip[\s\S]*?onOpenChildSession=\{onOpenBranchSession\}/,
   );
   assert.match(view, /<SessionGoalStrip sessionId=\{sessionId\} \/>/);
-  assert.ok(
-    view.indexOf("<SessionTodoStrip") < view.indexOf("<SessionFilesStrip") &&
-      view.indexOf("<SessionFilesStrip") < view.indexOf("<SessionSubagentsStrip") &&
-      view.indexOf("<SessionSubagentsStrip") < view.indexOf("<SessionGoalStrip"),
-    "strip order must be todo → files → subagents → goal in SessionView widgets",
-  );
-  // SessionStartSurface：引导页同样挂三个横栏 + goal
+  // SessionStartSurface：引导页同样隐藏文件修改卡
   assert.match(start, /<SessionTodoStrip sessionId=\{props\.sessionId\} \/>/);
-  assert.match(start, /<SessionFilesStrip sessionId=\{props\.sessionId\} \/>/);
+  assert.doesNotMatch(start, /SessionFilesStrip/);
   assert.match(start, /<SessionSubagentsStrip sessionId=\{props\.sessionId\} \/>/);
   assert.match(start, /<SessionGoalStrip sessionId=\{props\.sessionId\} \/>/);
 });

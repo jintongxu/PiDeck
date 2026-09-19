@@ -124,6 +124,31 @@ test("timeline owns paging, delegated scroll follow, and outline jump lifecycle"
   assert.match(source, /restoreTimelineAnchor\(/);
 });
 
+test("explicit jump invalidates pending session restoration before either can write", () => {
+  assert.match(source, /const restoreGenerationRef = useRef\(0\)/);
+  assert.match(
+    source,
+    /restoreGenerationRef\.current \+= 1;\s*setRestorePhase\("complete"\);/,
+  );
+  const generationChecks = source.match(
+    /restoreGenerationRef\.current !== restoreGeneration/g,
+  ) ?? [];
+  assert.equal(generationChecks.length, 2, "both no-anchor and saved-anchor restore frames must reject stale generations");
+  assert.match(
+    source,
+    /if \(!controllerEnabled \|\| !pendingJump \|\| isSurfaceLoading\) return;/,
+  );
+});
+
+test("pending jump waits for mounted layout to settle without requiring a second click", () => {
+  assert.match(source, /jumpSettleFrameRef = useRef<number \| undefined>\(undefined\)/);
+  assert.match(source, /let framesRemaining = 2;/);
+  assert.match(source, /const settleAndJump = \(\) => \{/);
+  assert.match(source, /pendingJump\.value\.nonce \+ 1/);
+  assert.match(source, /jumpSettleFrameRef\.current = requestAnimationFrame\(settleAndJump\)/);
+  assert.match(source, /目标刚挂载时，窗口切换和 Markdown 首帧仍可能在本次 commit 后排版/);
+});
+
 test("anchor restoration preserves its effective tail window and expands only when needed", () => {
   assert.match(source, /windowTurns: renderedWindowTurnsRef\.current/);
   // 跟随态的 DOM 固定为 3 轮，即使回底 effect 尚未来得及重置 scrolledWindowTurns；
@@ -147,8 +172,12 @@ test("scroll events synchronously retain an anchor before a same-task session sw
   // exist before React can commit a tab change and cancel the pending frame.
   assert.match(
     source,
-    /currentAnchorRef\.current = computeCurrentAnchor\(\);[\s\S]*?if \(scrollAnchorFrameRef\.current != null\) return;\s*scrollAnchorFrameRef\.current = requestAnimationFrame/,
+    /currentAnchorByOwnerRef\.current\.set\(sessionId, computeCurrentAnchor\(\)\);[\s\S]*?if \(scrollAnchorFrameRef\.current != null\) return;\s*scrollAnchorFrameRef\.current = requestAnimationFrame/,
   );
+  // The reused solo pane must never let the incoming session's scroll event
+  // overwrite the outgoing session's cleanup snapshot.
+  assert.match(source, /currentAnchorByOwnerRef\.current\.get\(sessionId\) \?\? null/);
+  assert.match(source, /currentAnchorByOwnerRef\.current\.delete\(sessionId\)/);
 });
 
 test("scroll anchors prefer stable turn roots over collapsible execution children", () => {
@@ -156,7 +185,7 @@ test("scroll anchors prefer stable turn roots over collapsible execution childre
   // 切回时仍找到同一 messageId，而非退化到顶部。
   assert.match(
     source,
-    /"article\.user-turn\[data-message-id\], \.turn-row\[data-message-id\]"/,
+    /"article\.user-turn\[data-message-id\], \.turn-row\[data-run-id\]"/,
   );
   assert.match(source, /if \(stableAnchor\) return stableAnchor;/);
   assert.match(source, /return findAnchor\(timeline\.querySelectorAll<HTMLElement>\("\[data-message-id\]"\)\);/);

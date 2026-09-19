@@ -99,10 +99,10 @@
   animation: turn-running-breathe 2.2s ease-in-out infinite;
 }
 .user-turn {
-  transition: opacity 180ms ease, transform 180ms cubic-bezier(0.22, 1, 0.36, 1);
+  transition: opacity 180ms ease;
 }
 .user-turn--fresh {
-  will-change: transform, opacity;
+  will-change: opacity;
 }
 .user-turn-bubble {
   border-color: color-mix(in srgb, var(--color-accent) 16%, var(--color-border));
@@ -2441,32 +2441,27 @@ body.ask-dialog-open .ask-card-preview {
 }
 
 /* ── 新消息入场动画（Task 1）──
- * 发送消息后乐观上屏的用户气泡 / 流式替换后的回答行播放一次轻量入场：
- * 轻微上移 + 淡入，避免 Agent 启动期间「消息已上屏但毫无反馈」的呆滞感。
- * 动画时长 260ms，与 1200ms 的 fresh 标记保留期匹配，不会重复播放。 */
+ * 包含滚动锚点的行只允许透明度动画。transform 会改变
+ * getBoundingClientRect() 的视觉坐标，锚点校正器会把动画位移误判为内容漂移并反复写
+ * scrollTop，造成首次侧键定位抖动。时长 260ms，不会重复播放。 */
 @keyframes message-enter {
   from {
     opacity: 0;
-    transform: translateY(10px) scale(0.985);
   }
   to {
     opacity: 1;
-    transform: translateY(0) scale(1);
   }
 }
 
 /* ── 上滚窗口扩展的顶部新增入场（2026-12）──
- * 窗口扩展 / 翻页在 displayRuns 顶部插入更早轮次时，新内容从上方轻微滑入淡入，
- * 避免「内容挂载那一下」硬切。只动 opacity + translateY（transform 不占布局，
- * 不干扰窗口扩展的 scrollTop 补偿），时长 280ms 与 topFresh 标记保留期（400ms）匹配。 */
+ * 窗口扩展 / 翻页新增轮次同样只淡入：行根节点承载 data-message-id/data-run-id
+ * 与本地锚点，不能进入 transform 坐标系。 */
 @keyframes top-enter {
   from {
     opacity: 0;
-    transform: translateY(-8px);
   }
   to {
     opacity: 1;
-    transform: translateY(0);
   }
 }
 

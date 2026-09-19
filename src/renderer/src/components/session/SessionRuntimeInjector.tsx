@@ -313,6 +313,7 @@ export const SessionRuntimeInjector = React.memo(function SessionRuntimeInjector
       onDeleteMessage={canEditOrDeleteMessages ? services.deleteMessage : undefined}
       onForkMessage={services.forkFromUserMessage}
       onSaveProjectIdea={services.saveProjectIdea}
+      onJumpToMessage={sessionTimeline.jumpToMessage}
       onRewindToMessage={isDshBackend ? undefined : handleRewindToMessage}
       forkingMessageId={services.forkingMessageId}
       onToast={(message: string) => services.showToast(message)}

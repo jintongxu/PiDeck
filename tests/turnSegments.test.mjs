@@ -290,6 +290,15 @@ test("groupToolMessages 不合并连续 assistant 消息：多段回答各自独
 	assert.equal(run.items[1].message.thinking, "T2");
 });
 
+test("groupToolMessages records the triggering user message for jump-to-question", () => {
+	const { groupToolMessages } = loadAppUtils();
+	const user = { id: "question-1", agentId: "a", role: "user", text: "问题", timestamp: 1 };
+	const tool = { id: "tool-1", agentId: "a", role: "tool", text: "", timestamp: 2 };
+	const answer = { id: "answer-1", agentId: "a", role: "assistant", text: "回答", timestamp: 3 };
+	const run = groupToolMessages([user, tool, answer]).find((item) => item.kind === "agent-run");
+	assert.equal(run?.triggerUserMessageId, "question-1");
+});
+
 test("groupToolMessages 忙碌中 error 诊断不打断 agent-run：回答保持一轮，诊断卡落在用户消息之后", () => {
 	const { groupToolMessages } = loadAppUtils();
 	const user = { id: "u2", agentId: "a", role: "user", text: "继续", timestamp: 4 };

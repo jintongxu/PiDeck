@@ -246,6 +246,7 @@ test("settle full render is deferred to idle (no long task during interaction)",
 	// settle 全量渲染（元素树+高亮，实测 70-100ms 长任务）必须延迟到浏览器空闲，
 	// 避免在用户滚动/交互期间卡帧造成滚动跳动
 	assert.match(stream, /wasStreamingRef = useRef\(false\)/);
+	assert.match(stream, /useState\(\(\) => !props\.isStreaming\)/);
 	assert.match(stream, /requestIdleCallback\(schedule, \{ timeout: 1500 \}\)/);
 	// 静态场景（从未流式，如 FileDiffViewer）不得延迟：立即全量
 	assert.match(stream, /if \(!wasStreamingRef\.current\) \{\s*\n\s*\/\/ 静态场景/);

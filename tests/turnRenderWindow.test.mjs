@@ -22,12 +22,14 @@ function runs(...ids) {
 test("sliceLastAgentRuns keeps only the trailing maxTurns agent-runs", () => {
   const items = [
     { kind: "message", id: "sys" },
-    ...runs("r1", "r2", "r3", "r4", "r5"),
+    ...runs("r1", "r2"),
+    { kind: "message", id: "question-3" },
+    ...runs("r3", "r4", "r5"),
   ];
   const sliced = windowing.sliceLastAgentRuns(items, 3);
   assert.deepEqual(
     sliced.map((item) => item.id),
-    ["r3", "r4", "r5"],
+    ["question-3", "r3", "r4", "r5"],
   );
 });
 
