@@ -74,6 +74,21 @@ const NON_RETRYABLE_LOCALIZED_PATTERNS: RegExp[] = [
 ];
 
 /**
+ * OpenAI/兼容网关的提示词策略拒绝：相同提示词重试不会改变结果，且不能被
+ * `upstream request failed` 等包装文案误判成瞬态故障。
+ * 匹配保持具体，避免把任意包含 policy/invalid 的服务错误拦成不可重试。
+ */
+export function isProviderPromptRejectionError(errorMessage: string): boolean {
+	if (!errorMessage) return false;
+	return (
+		/\binvalid[\s_-]+prompt\b/i.test(errorMessage) ||
+		/prompt\s+(?:was\s+)?flagged[\s\S]{0,120}(?:usage|content|safety)\s+policy/i.test(errorMessage) ||
+		/(?:usage|content|safety)\s+policy[\s\S]{0,120}(?:violation|reject|flagged|invalid)/i.test(errorMessage) ||
+		/content[_\s-]?filter(?:ed|ing)?/i.test(errorMessage)
+	);
+}
+
+/**
  * 4xx 客户端错误状态码。
  *
  * 带 4xx 的文案说明服务端明确拒绝了请求（region 不可用、参数非法、鉴权失败等），
@@ -153,6 +168,7 @@ const ALREADY_RETRYABLE_SIGNALS: RegExp[] = [
  */
 export function isTransientError(errorMessage: string): boolean {
 	if (!errorMessage) return false;
+	if (isProviderPromptRejectionError(errorMessage)) return false;
 	if (NON_RETRYABLE_LOCALIZED_PATTERNS.some((p) => p.test(errorMessage))) return false;
 	if (NON_RETRYABLE_HTTP_STATUS_PATTERN.test(errorMessage)) return false;
 	if (ALREADY_RETRYABLE_SIGNALS.some((p) => p.test(errorMessage))) return false;

@@ -24,6 +24,7 @@ function createRuntimeHarness() {
 			client: {
 				request: async () => ({ success: true, data: {} }),
 			},
+			isRunning: () => true,
 		},
 	});
 	return manager;
@@ -60,6 +61,22 @@ test("abort-shaped agent_end skips the error diagnostic and emits an abort notic
 
 	assert.equal(diagnostics, 0, "an abort must not become diagnostic.requestFailed");
 	assert.equal(abortNotices, 1, "an abort must notify through the notification path");
+});
+
+test("provider prompt-policy rejection keeps a live runtime reusable", () => {
+	const manager = createRuntimeHarness();
+	let diagnostics = 0;
+	manager.addDetailedErrorMessage = () => { diagnostics += 1; };
+
+	manager.handlePiEvent("agent-1", {
+		type: "agent_end",
+		stopReason: "error",
+		errorMessage: "Invalid prompt: your prompt was flagged as potentially violating our usage policy.",
+		messages: [],
+	});
+
+	assert.equal(diagnostics, 1, "the provider explanation must remain visible in the timeline");
+	assert.equal(manager.agents.get("agent-1")?.tab.status, "idle");
 });
 
 test("genuine agent_end errors still create the error diagnostic", () => {

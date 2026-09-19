@@ -21,6 +21,23 @@ export function isAbortErrorMessage(message: string): boolean {
 	return /(?:request|operation|signal|stream)\s+(?:was\s+)?aborted|aborted\s+by\s+(?:caller|user|abort|signal)/i.test(message);
 }
 
+/**
+ * 判断供应商是否拒绝了当前提示词（通常是内容/使用策略拦截）。
+ *
+ * 这类错误不是 Pi 进程故障：相同请求重试仍会被拒绝，但活着的进程可以继续
+ * 接收用户修改后的下一条消息。因此只把它当作可恢复的回复级错误，避免会话被
+ * 误标成终态 error；匹配保持具体，不能把任意「invalid」或「policy」误判为策略拦截。
+ */
+export function isProviderPromptRejectionError(message: string): boolean {
+	if (!message) return false;
+	return (
+		/\binvalid[\s_-]+prompt\b/i.test(message) ||
+		/prompt\s+(?:was\s+)?flagged[\s\S]{0,120}(?:usage|content|safety)\s+policy/i.test(message) ||
+		/(?:usage|content|safety)\s+policy[\s\S]{0,120}(?:violation|reject|flagged|invalid)/i.test(message) ||
+		/content[_\s-]?filter(?:ed|ing)?/i.test(message)
+	);
+}
+
 /** 从参数列表中取首个有效数字。 */
 export function pickNumber(...values: unknown[]): number | undefined {
 	for (const value of values) {

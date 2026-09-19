@@ -128,6 +128,7 @@ import {
 	isDefaultAgentTitle,
 	looksLikePiSessionFileStem,
 	isAbortErrorMessage,
+	isProviderPromptRejectionError,
 	shouldReloadMessagesAfterCompaction,
 } from "./agentUtils";
 import {
@@ -5141,6 +5142,7 @@ export class AgentManager {
 				// 重试中保持 running，不能误置为 idle/error，否则宠物聚合状态会提前转 done/failed
 				if (runtime) runtime.tab.status = "running";
 			} else if (errorMsg) {
+				const providerPromptRejected = isProviderPromptRejectionError(String(errorMsg));
 				if (abortedTurn) {
 					// Pi 的 abort 有时以 stopReason=error + AbortError 文案结束；这是
 					// 用户主动停止/steer 的正常收口，不应生成错误诊断卡。
@@ -5148,10 +5150,14 @@ export class AgentManager {
 				} else {
 					this.addDetailedErrorMessage(agentId, String(errorMsg));
 				}
-				// 有错误且不会重试 → Agent 进入 error 态，宠物聚合为 failed（行5），
-				// 否则会被误置为 idle 触发"所有任务完成"通知。
-				// 例外：用户主动 abort 的回合不置终态（进程还活着，见上方 abortedTurn 注释）。
-				if (runtime && !abortedTurn) runtime.tab.status = "error";
+				// 策略拒绝是当前提示词失败，不是 Pi 进程失败：相同请求不应重试，
+				// 但只要进程仍活着，下一条经用户修改的消息应继续复用该 runtime。
+				// 其它真实 provider/模型错误仍保持 error，便于侧栏提示并触发现有复活路径。
+				if (runtime && !abortedTurn) {
+					runtime.tab.status = providerPromptRejected && runtime.process.isRunning()
+						? "idle"
+						: "error";
+				}
 				// agent_end 携带错误且不重试：错误原文（API 400/模型报错等）必须进 applog，
 				// 会话气泡只面向用户，排查时依赖这里的结构化记录。
 				void (abortedTurn ? this.appLogger?.warn("agent", "Agent run aborted", {

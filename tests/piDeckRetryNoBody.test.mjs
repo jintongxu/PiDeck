@@ -54,6 +54,16 @@ const NON_RETRYABLE_LOCALIZED_PATTERNS = [
 	/参数错误|格式错误|请求错误|非法|校验失败/,
 ];
 
+function isProviderPromptRejectionError(errorMessage) {
+	if (!errorMessage) return false;
+	return (
+		/\binvalid[\s_-]+prompt\b/i.test(errorMessage) ||
+		/prompt\s+(?:was\s+)?flagged[\s\S]{0,120}(?:usage|content|safety)\s+policy/i.test(errorMessage) ||
+		/(?:usage|content|safety)\s+policy[\s\S]{0,120}(?:violation|reject|flagged|invalid)/i.test(errorMessage) ||
+		/content[_\s-]?filter(?:ed|ing)?/i.test(errorMessage)
+	);
+}
+
 const NON_RETRYABLE_HTTP_STATUS_PATTERN =
 	/(?:^|[^0-9])(?:400|401|402|403|404|405|406|409|410|412|413|415|422|431)\b/;
 
@@ -93,6 +103,7 @@ const ALREADY_RETRYABLE_SIGNALS = [
 
 function isTransientError(errorMessage) {
 	if (!errorMessage) return false;
+	if (isProviderPromptRejectionError(errorMessage)) return false;
 	if (NON_RETRYABLE_LOCALIZED_PATTERNS.some((p) => p.test(errorMessage))) return false;
 	if (NON_RETRYABLE_HTTP_STATUS_PATTERN.test(errorMessage)) return false;
 	if (ALREADY_RETRYABLE_SIGNALS.some((p) => p.test(errorMessage))) return false;
@@ -527,6 +538,30 @@ test("408 空响应仍被救援（Request Timeout 属瞬态，不在 4xx 排除�
 	const rewritten = rewriteErrorMessage(message);
 	assert.equal(rewritten, "408 status code (no body) (connection error)");
 	assert.equal(piWillRetry({ ...message, errorMessage: rewritten }), true);
+});
+
+test("OpenAI 提示词策略拒绝不改写，即使网关包装了瞬态错误词", () => {
+	for (const errorMessage of [
+		"Invalid prompt: your prompt was flagged as potentially violating our usage policy.",
+		"Upstream request failed: invalid_prompt (content policy violation)",
+		"The prompt was flagged by the safety policy",
+		"content_filter rejected this prompt",
+	]) {
+		const message = { stopReason: "error", errorMessage, api: "openai-completions" };
+		assert.equal(isProviderPromptRejectionError(errorMessage), true, errorMessage);
+		assert.equal(rewriteErrorMessage(message), undefined, `不应改写: ${errorMessage}`);
+		assert.equal(piWillRetry(message), false, `不应重试: ${errorMessage}`);
+	}
+});
+
+test("策略拒绝匹配保持具体，不误伤普通 invalid/policy 文案", () => {
+	for (const errorMessage of [
+		"invalid JSON response from provider",
+		"policy service temporarily unavailable",
+		"upstream request failed",
+	]) {
+		assert.equal(isProviderPromptRejectionError(errorMessage), false, errorMessage);
+	}
 });
 
 test("泛化错误不改写（信息不足，宁可漏判）", () => {
