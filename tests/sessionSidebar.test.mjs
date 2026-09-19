@@ -500,3 +500,14 @@ test("activity page keeps failed/stopped agents visible (error/closed)", () => {
   // 右键/重启入口不区分 live：失败会话也能从活动页菜单重启。
   assert.match(activeTree, /openMenu\(\{ kind: "agent", agentId: agent\.id/);
 });
+
+test("activity session rows expose project ideas through the hover action", () => {
+  const activeTree = readFileSync("src/renderer/src/components/sidebar/ActiveSessionsTree.tsx", "utf8");
+  assert.match(activeTree, /Lightbulb/);
+  assert.match(activeTree, /rowIdeaActionClass/);
+  assert.match(activeTree, /rowActionsClass/);
+  assert.match(activeTree, /group-hover\/row:pointer-events-auto/);
+  assert.match(activeTree, /right-8/);
+  assert.match(activeTree, /props\.actions\.projects\.manageIdeas\(projectId\)/);
+  assert.doesNotMatch(activeTree, /projectIdeasByProjectAtom|desktopApi\.projects\.ideas\.list|ideaRows/);
+});

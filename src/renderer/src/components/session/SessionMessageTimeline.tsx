@@ -172,6 +172,28 @@ export function SessionMessageTimeline(props: SessionMessageTimelineProps) {
   const sendState = useAtomValue(sendStateSelector);
   const controller = props.controller;
   const timelineRef = props.timelineRef ?? controller.timelineRef;
+  // 发送新问题意味着用户已经回到当前对话尾部：即使此前正在浏览历史，
+  // 也要在乐观 user 消息提交后回到底部，让问题和后续流式回答保持可见。
+  // 只监听 requestId，避免历史分页/普通消息更新把视口误拉到底部；切会话首帧
+  // 仅建立基线，不能因为旧的发送状态而跳动。
+  const lastAutoScrollRequestRef = useRef<{ sessionId: string; requestId?: string }>({
+    sessionId,
+    requestId: sendState?.requestId,
+  });
+  useEffect(() => {
+    const previous = lastAutoScrollRequestRef.current;
+    if (previous.sessionId !== sessionId) {
+      lastAutoScrollRequestRef.current = {
+        sessionId,
+        requestId: sendState?.requestId,
+      };
+      return;
+    }
+    const requestId = sendState?.requestId;
+    if (!requestId || requestId === previous.requestId) return;
+    lastAutoScrollRequestRef.current = { sessionId, requestId };
+    controller.scrollToBottom();
+  }, [controller.scrollToBottom, sendState?.requestId, sessionId]);
   const saveProjectIdea = useCallback((capture: Omit<ProjectIdeaCapture, "sessionId">) => {
     props.onSaveProjectIdea?.({ ...capture, sessionId });
   }, [props.onSaveProjectIdea, sessionId]);

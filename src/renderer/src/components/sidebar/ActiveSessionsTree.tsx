@@ -1,4 +1,4 @@
-import { Ellipsis } from "lucide-react";
+import { Ellipsis, Lightbulb } from "lucide-react";
 import { useAtomValue } from "jotai";
 import type { AgentTab, SessionRecord } from "../../../../shared/types";
 import { sessionStatusDotClass } from "../../agentListDisplay";
@@ -21,10 +21,11 @@ import { formatRelativeTime } from "../../utils/relativeTime";
 const activeRowClass =
 	"group/resource conversation agent-row relative flex min-h-8 w-full items-center gap-1.5 rounded-lg border border-transparent px-2 py-0 text-left text-body text-foreground shadow-none transition-[background-color,border-color,box-shadow] duration-200 hover:border-border-subtle hover:bg-muted/60 hover:text-foreground focus-visible:bg-muted/70 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-inset";
 
-/** 右侧「更多操作」按钮：与 SessionTree 同一套 absolute 浮层虚化模式，
- *  行 hover 出现，菜单打开期间保持点亮。 */
-const rowMoreActionsClass =
+/** 会话行右侧操作组：想法与更多操作共用一个悬浮容器，避免两个 absolute 按钮互相覆盖。 */
+const rowActionsClass =
 	"row-more-actions pointer-events-none absolute top-1/2 right-1 -translate-y-1/2 opacity-0 transition-opacity group-hover/row:pointer-events-auto group-hover/row:opacity-100 group-focus-within/row:pointer-events-auto group-focus-within/row:opacity-100";
+/** 项目想法按钮位于「更多」左侧，两个入口各自占一个固定槽位。 */
+const rowIdeaActionClass = rowActionsClass.replace("right-1", "right-8");
 
 /**
  * 活动 Agent 会话页：跨项目收集所有已绑定 runtime 的 Agent（live + 终态），按会话更新时间排序。
@@ -145,12 +146,29 @@ export function ActiveSessionsTree(props: {
 								</div>
 							</button>
 						</SessionHoverCard>
+						{project && (
+							<button
+								type="button"
+								className={cn(
+									rowIdeaActionClass,
+									"grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground",
+								)}
+								aria-label={t("projectIdeas.title")}
+								title={t("projectIdeas.title")}
+								onClick={(event) => {
+									event.stopPropagation();
+									props.actions.projects.manageIdeas(projectId);
+								}}
+							>
+								<Lightbulb size={12} aria-hidden="true" />
+							</button>
+						)}
 						<Button
 							type="button"
 							variant="ghost"
 							size="icon-xs"
 							className={cn(
-								rowMoreActionsClass,
+								rowActionsClass,
 								controller.menu?.kind === "agent" && controller.menu.agentId === agent.id && "pointer-events-auto opacity-100",
 							)}
 							aria-label={t("sidebar.moreActions")}

@@ -13,6 +13,10 @@ const source = readFileSync(
   "src/renderer/src/hooks/useSessionTimelineController.ts",
   "utf8",
 );
+const timelineSource = readFileSync(
+  "src/renderer/src/components/session/SessionMessageTimeline.tsx",
+  "utf8",
+);
 
 function compileModule(filePath, imports = {}) {
   const output = ts.transpileModule(readFileSync(filePath, "utf8"), {
@@ -122,6 +126,15 @@ test("timeline owns paging, delegated scroll follow, and outline jump lifecycle"
   // 2026-11：100 条分页器已删除，jump 不再扩渲染窗口（数据全量在 atom）
   assert.doesNotMatch(source, /pagination\.loadUntilIncluded\(index\)/);
   assert.match(source, /restoreTimelineAnchor\(/);
+});
+
+test("sending a new prompt returns a history reader to the live tail", () => {
+  // 只监听发送 requestId，而不是所有消息变化：历史翻页和旧消息加载不能抢回用户视角。
+  assert.match(timelineSource, /lastAutoScrollRequestRef/);
+  assert.match(timelineSource, /previous\.sessionId !== sessionId/);
+  assert.match(timelineSource, /requestId === previous\.requestId/);
+  assert.match(timelineSource, /controller\.scrollToBottom\(\)/);
+  assert.match(timelineSource, /\[controller\.scrollToBottom, sendState\?\.requestId, sessionId\]/);
 });
 
 test("explicit jump invalidates pending session restoration before either can write", () => {
