@@ -5,6 +5,13 @@
 - [中文 CHANGELOG](https://github.com/ayuayue/PiDeck/blob/main/CHANGELOG.zh-CN.md)
 - [English CHANGELOG](https://github.com/ayuayue/PiDeck/blob/main/CHANGELOG.md)
 
+## v0.7.9
+
+发布时间：2026-09-20
+
+- ✨ **Pi 计划模式统一交给 pi-maestro-flow**
+- ✨ **启动 Agent 后会话立即同步并置顶**
+
 ## v0.7.8
 
 发布时间：2026-09-19

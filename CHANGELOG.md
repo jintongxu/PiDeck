@@ -1,3 +1,9 @@
+## v0.7.9 - 2026-09-20
+
+### 🐛 Fixes
+- **Pi Plan mode is owned by pi-maestro-flow** — Remove PiDeck's private Plan/Goal mode extensions and duplicate state machine. PiDeck only displays Maestro's current mode while DSH's native Plan/Goal remain unchanged.
+- **Start Agent now syncs and prioritizes the session immediately** — Fix delayed sidebar status dots and session ordering after starting an Agent from the context menu.
+
 ## v0.7.8 - 2026-09-19
 
 ### 🐛 Fixes

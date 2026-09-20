@@ -79,10 +79,11 @@
 
 ## 📋 Changelog
 
-> **Latest: v0.7.8** (2026-09-19)
+> **Latest: v0.7.9** (2026-09-20)
 
-### v0.7.8 Release Highlights
-- ✨ **Use pi-maestro-flow for Todo management**
+### v0.7.9 Release Highlights
+- ✨ **Pi Plan mode is owned by pi-maestro-flow**
+- ✨ **Start Agent now syncs and prioritizes the session immediately**
 
 [View Full Changelog →](CHANGELOG.md)
 
