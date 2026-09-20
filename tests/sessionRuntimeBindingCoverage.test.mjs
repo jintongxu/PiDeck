@@ -37,6 +37,15 @@ test("catalog scans attach matching existing runtimes in the main process", () =
   assert.match(sessionIpc, /sessionsCatalogList[\s\S]*mergeScanned[\s\S]*attachCatalogRuntimes/);
 });
 
+test("manual runtime activation republishes the bound agent state immediately", () => {
+  const activation = sessionIpc.match(/sessionsRuntimeActivate[\s\S]*?return result;/)?.[0] ?? "";
+  assert.match(activation, /if \(result\.ok\)/);
+  assert.match(activation, /agentManager\.list\(\)\.find\(\(candidate\) => candidate\.id === result\.value\.agentId\)/);
+  assert.match(activation, /tab\.runtimeGeneration = result\.value\.runtimeGeneration/);
+  assert.match(activation, /emitSessionRuntimeEvent\(tab\.id, ipcChannels\.agentsState, tab\)/);
+  assert.ok(activation.indexOf("emitSessionRuntimeEvent") < activation.indexOf("Runtime activation IPC completed"));
+});
+
 test("unbound interactive UI is cancelled and cannot be surfaced as Session UI", () => {
   assert.match(main, /cancelUnboundUiRequest/);
   assert.match(main, /"batch_ask"/);

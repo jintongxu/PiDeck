@@ -165,8 +165,11 @@ function getCodexParentKey(session: SessionSummary) {
 
 function getAgentSortAt(agent: AgentTab, sessionByKey: Map<string, SessionSummary>) {
 	const sessionKey = findSessionKeyForAgent(agent.sessionPath, sessionByKey);
-	// 历史会话激活成 Agent 后仍按原会话更新时间排序；全新 Agent 没有历史文件时按创建时间排到最新。
-	return sessionKey ? (sessionByKey.get(sessionKey)?.updatedAt ?? agent.createdAt) : agent.createdAt;
+	// 历史会话刚启动时 Agent.createdAt 是本次启动时间，应优先于旧 catalog.updatedAt；
+	// 仍保留较新的会话更新时间，避免打开一个很老的运行实例把最近活跃会话挤下去。
+	return sessionKey
+		? Math.max(sessionByKey.get(sessionKey)?.updatedAt ?? agent.createdAt, agent.createdAt)
+		: agent.createdAt;
 }
 
 function chooseAgentForSession(current: AgentTab, candidate: AgentTab) {

@@ -67,8 +67,8 @@ export function ActiveSessionsTree(props: {
 				agent,
 				projectId: project.id,
 				record: bound,
-				// 有绑定记录按会话更新时间排，全新 Agent 按创建时间（排在会话之后）。
-				sortAt: bound ? bound.updatedAt : agent.createdAt,
+				// 本次 Agent 启动时间优先于历史 catalog 时间，确保右键启动后立即置顶。
+				sortAt: bound ? Math.max(bound.updatedAt, agent.createdAt) : agent.createdAt,
 			});
 		}
 	}

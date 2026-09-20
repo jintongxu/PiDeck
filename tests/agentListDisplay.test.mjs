@@ -97,6 +97,23 @@ test("keeps a stable Session row and key when a runtime is attached", () => {
 	assert.equal(getSessionRowKey(record), "session:desktop-session-1");
 });
 
+test("启动历史会话使用本次 Agent 创建时间立即排到顶部", () => {
+	const { getProjectAgentSessionDisplay } = loadModule();
+	const oldSession = session({ id: "old.jsonl", filePath: "C:/sessions/old.jsonl", source: "pi", updatedAt: 100 });
+	const startedSession = session({ id: "started.jsonl", filePath: "C:/sessions/started.jsonl", source: "pi", updatedAt: 10 });
+	const display = getProjectAgentSessionDisplay({
+		agents: [{
+			id: "runtime-started",
+			sessionPath: "C:/sessions/started.jsonl",
+			sessionEnvironment: "native",
+			createdAt: 200,
+			status: "idle",
+		}],
+		sessions: [oldSession, startedSession],
+	});
+	assert.equal(display.children[0].session.id, "started.jsonl");
+});
+
 test("DSH agent 与 DSH 会话按 dshSessionId 配对：只渲染一个会话行，不产生重复 agent 行", () => {
 	const { getProjectAgentSessionDisplay } = loadModule();
 	const dshSession = session({

@@ -1627,6 +1627,16 @@ export function registerSessionIpc(deps: SessionIpcDeps): void {
 			const startedAt = Date.now();
 			void appLogger.info("session-perf", "Runtime activation IPC started", { sessionId });
 			const result = await sessionRuntimeCoordinator.activateRuntime(sessionId);
+			if (result.ok) {
+				// AgentManager 的 create 初始 agents:state 可能早于 SessionRuntimeCoordinator.bind，
+				// 会被 runtime 事件桥接丢弃。激活成功后补发一次绑定态，保证右键启动的会话
+				// 立即进入侧栏置顶/运行中圆点，而不是等下一次 pi 状态变化才刷新。
+				const tab = agentManager.list().find((candidate) => candidate.id === result.value.agentId);
+				if (tab) {
+					tab.runtimeGeneration = result.value.runtimeGeneration;
+					emitSessionRuntimeEvent(tab.id, ipcChannels.agentsState, tab);
+				}
+			}
 			void appLogger.info("session-perf", "Runtime activation IPC completed", {
 				sessionId,
 				ok: result.ok,
