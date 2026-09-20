@@ -7,6 +7,7 @@ import type {
 	SessionRuntimeTarget,
 } from "../../shared/types";
 import { isAutomationRunTerminal } from "../../shared/types";
+import { PIDECK_MAESTRO_PLAN_ENTER } from "../../shared/maestroControls";
 /**
  * 复用渲染层发送链路的模式标记构造函数，让「普通/计划/目标」的隐藏标记格式只有一份
  * 定义，避免主进程与渲染进程各写一套后悄悄漂移。
@@ -299,25 +300,26 @@ export class AutomationRunCoordinator {
 			// 与飞书（FeishuBridge）和 index.ts 的 agentInstruction 拼接写法保持一致。
 			const agentInstruction = `[Automation: ${task.name}] Please complete this task autonomously without waiting for follow-up inputs.`;
 
-			// 工作模式复用渲染层发送链路的同一个纯函数，产出 plan/goal 的隐藏标记，
-			// 不在主进程复刻第二套标记格式（标记由 pi-deck-plan-mode / pi-deck-goal-mode
-			// 内置扩展在 pi 的 input 事件里识别）。normal 时该函数原样返回 message。
+			// 工作模式复用渲染层发送链路的同一个纯函数；Plan 由 pi-maestro-flow
+			// 自己持有状态，DSH Goal 由 host 持有。Pi 不再接受已移除的 PiDeck Goal。
 			const mode = task.mode ?? "normal";
-			const submission = buildComposerPromptSubmission(task.prompt, mode);
+			const isDsh = task.backend === "dsh";
+			const effectiveMode = !isDsh && mode === "goal" ? "normal" : mode;
+			const submission = buildComposerPromptSubmission(task.prompt, effectiveMode);
 			// DSH 显式拒绝 agentMessage（DshAgentManager.sendPrompt →
 			// session.sendDshUnsupportedPayload），且宿主指令/模式标记都是 pi 扩展，
 			// DSH 无等价物——DSH 任务直接发任务提示词原文（时间线即所见）。
-			const isDsh = task.backend === "dsh";
-
 			const result = await this.sessionRuntimeCoordinator.send({
 				sessionId,
 				requestId,
 				message: task.prompt,
 				description: `Automation: ${task.name}`,
-				// 顺序即优先级：宿主指令置顶（模式标记不能在首行，否则被指令挡住），
-				// 其次是对应模式的隐藏载荷，最后是任务提示词原文。
+				// Plan 私有 marker 必须位于输入首部，才能由 pi-maestro-flow 的 RPC
+				// input handler 接管；普通/Goal 仍沿用宿主指令 + Goal marker 的旧顺序。
 				...(isDsh ? {} : {
-					agentMessage: `${agentInstruction}\n\n${submission.agentMessage ?? submission.message}`,
+					agentMessage: mode === "plan"
+						? `${PIDECK_MAESTRO_PLAN_ENTER}\n${agentInstruction}\n\n${submission.message}`
+						: `${agentInstruction}\n\n${submission.agentMessage ?? submission.message}`,
 				}),
 			});
 

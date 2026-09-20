@@ -26,6 +26,7 @@ import {
   parseImageGenWatermark,
 } from "../../../shared/imageGenParams";
 import { resolveBusySendDelivery } from "../../../shared/busySendDelivery";
+import { PIDECK_MAESTRO_PLAN_ENTER, PIDECK_MAESTRO_PLAN_EXIT } from "../../../shared/maestroControls";
 import { FILE_TREE_ABSOLUTE_MAX_DEPTH } from "../../../shared/fileTree";
 import {
   classifyCompactError,
@@ -355,6 +356,7 @@ export function useSessionComposerController(
   );
   const runtime = useAtomValue(sessionRuntimeBySessionIdAtomFamily(sessionId));
   const runtimeUi = useAtomValue(sessionRuntimeUiBySessionIdAtomFamily(sessionId));
+  const maestroModeStatus = runtimeUi?.statuses["mode"];
   const sshStatusText = runtimeUi?.statuses["maestro-ssh"];
   const sshHostLabel = sshStatusText?.startsWith("SSH · ")
     ? sshStatusText.slice("SSH · ".length).split(" · ")[0]?.trim()
@@ -406,6 +408,7 @@ export function useSessionComposerController(
     backend: isDshBackend ? "dsh" : "pi",
     localMode: modes[sessionId],
     planModeActive: runtime?.state?.planModeActive === true,
+    maestroMode: maestroModeStatus,
     goalPhase: runtime?.state?.goal?.phase,
   });
   const sendState = sendStates[sessionId] ?? { status: "idle" as const };
@@ -575,6 +578,30 @@ export function useSessionComposerController(
     // 生图历史是独立消息协议，普通/计划/目标模式的命令语义不适用；
     // 同一会话一旦产生生图记录（或本身是 imagegen 后端），必须保持生图模式，避免误发普通请求。
     if ((hasImageGenHistory || record?.backend === "imagegen") && nextMode !== "imagegen") return;
+    // Pi-maestro-flow：Plan/Act 是扩展自己的状态。菜单只发送私有控制 marker，
+    // 当前模式以随后回传的 mode status 为准，不在本地提前伪造 Plan 状态。
+    if (!isDshBackend && ((nextMode === "plan" && mode !== "plan") || (nextMode === "normal" && mode === "plan"))) {
+      setModeAtom({ sessionId, mode: "normal" });
+      void (async () => {
+        if (nextMode === "plan" && mode === "goal") {
+          const paused = await desktopApi.sessions.sendPrompt({
+            sessionId,
+            requestId: crypto.randomUUID(),
+            message: "/goal pause",
+          });
+          if (!paused.accepted) throw new Error(paused.error ?? t("dshPlan.switchFailed"));
+        }
+        const result = await desktopApi.sessions.sendPrompt({
+          sessionId,
+          requestId: crypto.randomUUID(),
+          message: nextMode === "plan" ? PIDECK_MAESTRO_PLAN_ENTER : PIDECK_MAESTRO_PLAN_EXIT,
+        });
+        if (!result.accepted) throw new Error(result.error ?? t("dshPlan.switchFailed"));
+      })().catch((error) => {
+        showNotice(error instanceof Error ? error.message : String(error), 4000);
+      });
+      return;
+    }
     // DSH：plan 走 host /plan；goal 走 create/resume/pause IPC（切回普通暂停，不清除）。
     // 本地 atom 仍写入 goal，让选择器立刻切到目标模式；首条用户消息再 /goal 创建。
     if (isDshBackend) {
@@ -636,20 +663,8 @@ export function useSessionComposerController(
         return;
       }
     }
-    // pi：切回普通立刻发 /goal pause，不要等下一条无标记消息才停。
-    if (!isDshBackend && nextMode === "normal" && mode === "goal") {
-      setModeAtom({ sessionId, mode: "normal" });
-      void desktopApi.sessions.sendPrompt({
-        sessionId,
-        requestId: crypto.randomUUID(),
-        message: "/goal pause",
-      }).catch((error) => {
-        showNotice(error instanceof Error ? error.message : String(error), 4000);
-      });
-      return;
-    }
     setModeAtom({ sessionId, mode: nextMode });
-  }, [hasImageGenHistory, isDshBackend, mode, runtime?.agentId, runtime?.state?.goal?.phase, sessionId, setModeAtom]);
+  }, [hasImageGenHistory, isDshBackend, mode, record?.backend, runtime?.agentId, runtime?.state?.goal?.phase, sessionId, setModeAtom]);
 
   const loadTemplates = useCallback(async () => {
     const token = templateRequestGateRef.current.begin(templateKey);
@@ -1929,6 +1944,8 @@ export function useSessionComposerController(
     sessionId,
     record,
     runtime,
+    /** pi-maestro-flow 通过现有 runtime UI status 广播的只读模式状态。 */
+    maestroModeStatus,
     sshHostLabel,
     openSsh,
     // 引导页优先回显显式切换（guideBackendOverride），否则退回上次偏好/默认 pi；

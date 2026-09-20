@@ -251,6 +251,7 @@ export const ComposerArea = forwardRef<HTMLElement, ComposerAreaProps>(function 
                 modelDisabled={composer.isStarting}
                 modelPending={modelPendingMap[props.sessionId]}
                 composerAgentMode={composer.mode}
+                maestroModeStatus={composer.maestroModeStatus}
                 gitInfo={props.gitInfo}
                 onSwitchBranch={props.onSwitchBranch}
                 record={composer.record}

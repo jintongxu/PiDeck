@@ -770,8 +770,6 @@ export class ExtensionManager {
  * plan / goal / ask：三方包名含关键词即视为功能冲突；Todo 已由 pi-maestro-flow 统一提供。
  */
 export const BUILT_IN_CONFLICT_KEYWORDS = [
-	["pi-deck-plan-mode.ts", "plan"],
-	["pi-deck-goal-mode.ts", "goal"],
 	["pi-deck-ask-question.ts", "ask"],
 ] as const;
 

@@ -1,7 +1,7 @@
 // 「+」菜单模式可见性纯函数测试（useComposerModeAvailability 抽出的 computeVisibleModes）：
 // 生图已从「+」菜单移除（imagegen 是独立后端，不再作为可切模式）；imagegen 会话
 // 或 legacy 含生图消息的 pi 会话（isImageGen=true）模式菜单为空，走专用生图底栏；
-// plan/goal 受扩展开关控制。
+// plan 由 pi-maestro-flow 可用性决定，goal 受 PiDeck 扩展开关控制。
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
@@ -35,13 +35,18 @@ function loadHookModule() {
 
 const { computeVisibleModes } = loadHookModule();
 
-test("pi 全扩展可用：菜单只有 普通/目标/规划，不再出现生图", () => {
-	const result = [...computeVisibleModes({ isImageGen: false, planModeAvailable: true, goalModeAvailable: true })];
-	assert.deepEqual(result, ["normal", "goal", "plan"]);
+test("DSH 原生 Plan/Goal 可用：菜单不含生图", () => {
+	const result = [...computeVisibleModes({ isImageGen: false, planModeAvailable: true, goalModeAvailable: true, isDsh: true })];
+	assert.deepEqual(result, ["normal", "plan", "goal"]);
 });
 
-test("pi 关闭 plan/goal 扩展：对应模式从菜单消失，仅保留普通", () => {
-	const result = [...computeVisibleModes({ isImageGen: false, planModeAvailable: false, goalModeAvailable: false })];
+test("Pi 不显示模式控制项，Plan 状态由 Maestro 自动维护", () => {
+	const result = [...computeVisibleModes({ isImageGen: false, planModeAvailable: true, goalModeAvailable: true, isDsh: false })];
+	assert.deepEqual(result, ["normal"]);
+});
+
+test("Plan/Goal 不可用：对应模式从菜单消失，仅保留普通", () => {
+	const result = [...computeVisibleModes({ isImageGen: false, planModeAvailable: false, goalModeAvailable: false, isDsh: true })];
 	assert.deepEqual(result, ["normal"]);
 });
 

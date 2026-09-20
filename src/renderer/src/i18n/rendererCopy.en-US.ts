@@ -391,6 +391,8 @@ export const enUS: Record<TranslationKey, string> = {
   "app.composerModeNormal": "Normal Mode",
   "app.composerModeNormalDesc": "Direct execution for normal tasks and edits",
   "app.composerModePlan": "Plan Mode",
+  "app.composerModePlanStatus": "Managed by pi-maestro-flow",
+  "app.composerModeMaestroStatus": "Current mode (managed by pi-maestro-flow)",
   "app.composerModePlanDesc": "Read-only first, then generate a plan for confirmation",
   "app.composerModeGoal": "Goal Mode",
   "app.composerModeGoalDesc": "Keep working toward one objective until it is complete, blocked, or paused",
@@ -2330,8 +2332,6 @@ export const enUS: Record<TranslationKey, string> = {
   "config.extensionFiltered": "Filtered install",
   // Localized descriptions for the recommended extension list (ExtensionsTab renders via descriptionKey)
   "config.extRecommended.piDeckTodo": "Built into PiDeck: a current-plan TODO extension with explicit replace and restore actions, branch-scoped persistence, and task-progress tracking.",
-  "config.extRecommended.piDeckPlanMode": "Built into PiDeck: a plan-mode extension that makes the AI produce an execution plan before replying, keeping complex tasks clear.",
-  "config.extRecommended.piDeckGoalMode": "Built into PiDeck: a goal-mode extension that keeps working toward one objective until it is complete, blocked, or paused.",
   "config.extRecommended.piDeckAskQuestion": "Built into PiDeck: inserts carefully designed question cards into conversations to guide the AI toward more precise answers.",
   "config.extRecommended.piDeckNulRedirectFix": "Built into PiDeck: fixes leftover file issues when pi redirects to the NUL device on Windows.",
   "config.extRecommended.contextMode": "An MCP plugin that saves up to 98% of the context window. Sandboxed code execution, an FTS5 knowledge base, and intent-driven search.",
@@ -2341,9 +2341,7 @@ export const enUS: Record<TranslationKey, string> = {
   // Installed list: one-line description per built-in extension (ExtensionTableRow maps source -> builtInExtDesc.*)
   "config.builtInExtDesc.pi-deck-request-size-recovery": "Request-size recovery: detects gateway 413/request-too-large errors and, with your consent, temporarily switches to a higher-limit model to compact the session, then switches back to unblock sending.",
   "config.builtInExtDesc.pi-deck-ask-question": "Registers the ask_question tool: the model can ask you questions through the desktop UI (select/input/confirm/batched question tabs) and receives your answers.",
-  "config.builtInExtDesc.pi-deck-goal-mode": "Goal mode: keeps working toward one objective round after round until it is complete, blocked, paused, or the round limit is hit; state survives restarts.",
   "config.builtInExtDesc.pi-deck-nul-redirect-fix": "NUL redirect fix: rewrites Windows-style redirects like `> nul` to /dev/null before bash runs, preventing Git Bash from creating undeletable nul files.",
-  "config.builtInExtDesc.pi-deck-plan-mode": "Plan mode: produces a numbered plan with a read-only toolset first; after you choose execute/stay/revise, write tools are restored and [DONE:n] markers drive the progress widget.",
   "config.builtInExtDesc.pi-deck-retry-no-body": "Transient-error retry enhancement: recognizes gateway empty responses, Chinese \"service unavailable\" notices, stream_read_error and other transient faults outside pi's retry list, rewriting them so pi retries automatically.",
   "config.builtInExtDesc.pi-deck-security-gate": "Security gate: enforces the per-session security policy on tool calls — dangerous bash commands prompt for confirmation or are rejected; policy snapshots hot-reload without restart.",
   "config.builtInExtDesc.pi-deck-session-title": "Session title generation: after the first round settles, generates a short title asynchronously with a minimal standalone context, without touching the main conversation or transcript.",

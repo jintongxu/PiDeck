@@ -444,15 +444,15 @@ test("dispatch carries the task prompt into agentMessage (not just the automatio
 });
 
 /**
- * 工作模式回归：定时任务可以配置普通/计划/目标，dispatch 时把模式标记带进 agentMessage。
+ * 工作模式回归：定时任务可以配置普通/计划/目标，dispatch 时保留模式语义。
  *
  * 契约：
- * - 普通模式（含旧任务未设置 mode）不得出现任何隐藏标记，行为与改动前逐字节一致；
- * - 计划/目标模式必须复用 composer 的标记常量（__PI_DECK_PLAN_MODE__ / __PI_DECK_GOAL_MODE__），
- *   否则 pi 内置扩展识别不到，任务会退化成普通模式静默跑错；
- * - 无论哪种模式，任务提示词原文与宿主指令都必须保留（上一个 bug 的回归防线）。
+ * - 普通模式（含旧任务未设置 mode）不得出现隐藏标记；
+ * - Plan 模式由 pi-maestro-flow 的当前会话状态负责，不能再注入 PiDeck Plan marker；
+ * - Goal 模式继续复用 PiDeck Goal marker；
+ * - 无论哪种模式，任务提示词原文与宿主指令都必须保留。
  */
-test("dispatch applies the task working mode marker and always keeps the prompt", async () => {
+test("dispatch applies the task working mode semantics and always keeps the prompt", async () => {
 	const dir = await mkdtemp(join(tmpdir(), "pideck-coord-mode-"));
 	const storePath = join(dir, "automation.json");
 	try {
@@ -471,24 +471,22 @@ test("dispatch applies the task working mode marker and always keeps the prompt"
 		assert.ok(normalSent.agentMessage.includes("检查仓库状态"));
 		normalCoordinator.dispose();
 
-		// 计划模式：带计划标记，且提示词与指令都在
+		// 计划模式：不再注入 PiDeck marker，交由 pi-maestro-flow 当前状态处理
 		const { deps: planDeps, coordinator: planCoordinator } =
 			await createStartedCoordinator(store, {
 				name: "计划任务",
 				prompt: "重构订单模块",
 				mode: "plan",
 			});
-		const planSent = planDeps.sentPrompts[0];
+		const planSent = planDeps.sentPrompts.at(-1);
 		assert.equal(planSent.message, "重构订单模块");
-		assert.ok(
-			planSent.agentMessage.includes("__PI_DECK_PLAN_MODE__"),
-			`plan 模式必须带计划标记，实际为: ${JSON.stringify(planSent.agentMessage)}`,
-		);
+		assert.match(planSent.agentMessage, /^__pideck_maestro_plan_enter__\n/);
+		assert.doesNotMatch(planSent.agentMessage, /__PI_DECK_PLAN_MODE__/);
 		assert.ok(planSent.agentMessage.includes("重构订单模块"));
 		assert.match(planSent.agentMessage, /autonomously/);
 		planCoordinator.dispose();
 
-		// 目标模式：带目标标记
+		// Pi 目标模式已移除：目标任务降级为普通 Pi 提示词（DSH 有独立 host Goal）。
 		const { deps: goalDeps, coordinator: goalCoordinator } =
 			await createStartedCoordinator(store, {
 				name: "目标任务",
@@ -497,10 +495,7 @@ test("dispatch applies the task working mode marker and always keeps the prompt"
 			});
 		const goalSent = goalDeps.sentPrompts[0];
 		assert.equal(goalSent.message, "把这个功能做到测试全绿");
-		assert.ok(
-			goalSent.agentMessage.includes("__PI_DECK_GOAL_MODE__"),
-			`goal 模式必须带目标标记，实际为: ${JSON.stringify(goalSent.agentMessage)}`,
-		);
+		assert.doesNotMatch(goalSent.agentMessage, /__PI_DECK_GOAL_MODE__/);
 		assert.ok(goalSent.agentMessage.includes("把这个功能做到测试全绿"));
 		goalCoordinator.dispose();
 	} finally {

@@ -73,7 +73,6 @@ function loadExtensionManager({ homeDir, runPiOutput = "", fsOverrides = {} } = 
 					BUILT_IN_EXTENSIONS: [
 						"pi-deck-ask-question.ts",
 						"pi-deck-nul-redirect-fix.ts",
-						"pi-deck-plan-mode.ts",
 						"pi-deck-todo.ts",
 					],
 				};

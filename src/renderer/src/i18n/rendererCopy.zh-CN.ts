@@ -392,6 +392,8 @@ export const zhCN = {
   "app.composerModeNormal": "普通模式",
   "app.composerModeNormalDesc": "直接执行，适合日常修改和确认过的任务",
   "app.composerModePlan": "计划模式",
+  "app.composerModePlanStatus": "由 pi-maestro-flow 管理",
+  "app.composerModeMaestroStatus": "当前模式（由 pi-maestro-flow 管理）",
   "app.composerModePlanDesc": "先只读分析并生成计划，需要你确认后再执行",
   "app.composerModeGoal": "目标模式",
   "app.composerModeGoalDesc": "围绕一条目标自动连续推进，直到完成、阻塞或你暂停",
@@ -2314,8 +2316,6 @@ export const zhCN = {
   "config.extensionFiltered": "过滤式安装",
   // 推荐扩展列表的本地化描述（ExtensionsTab 按 descriptionKey 取文案）
   "config.extRecommended.piDeckTodo": "PiDeck 内置：当前有效计划 TODO 扩展，支持显式替换、恢复和分支级持久化，并在对话中追踪任务进度。",
-  "config.extRecommended.piDeckPlanMode": "PiDeck 内置：计划模式扩展，让 AI 在回复前首先生成执行计划，复杂任务一目了然。",
-  "config.extRecommended.piDeckGoalMode": "PiDeck 内置：目标模式扩展，围绕一条目标自动连续推进，直到完成、阻塞或你暂停。",
   "config.extRecommended.piDeckAskQuestion": "PiDeck 内置：在对话中插入精心设计的问题卡片，引导 AI 给出更精准的回答。",
   "config.extRecommended.piDeckNulRedirectFix": "PiDeck 内置：修复 Windows 下 pi 重定向到 NUL 设备时可能产生的残留文件问题。",
   "config.extRecommended.contextMode": "MCP 插件，可节省 98% 的上下文窗口。沙箱代码执行、FTS5 知识库和意图驱动搜索。",
@@ -2325,9 +2325,7 @@ export const zhCN = {
   // 已安装列表：内置扩展一行简介（ExtensionTableRow 按 source 映射 builtInExtDesc.*）
   "config.builtInExtDesc.pi-deck-request-size-recovery": "请求体超限自动恢复：识别网关 413/请求体过大错误，征得同意后临时切换大上限模型压缩会话再切回，解除无法发送的死锁。",
   "config.builtInExtDesc.pi-deck-ask-question": "注册 ask_question 工具：模型可通过桌面 UI 向你提问（单选/输入/确认/批量问题 Tab），回答回传给模型。",
-  "config.builtInExtDesc.pi-deck-goal-mode": "目标模式：围绕一条目标自动续轮推进，直到完成、阻塞、暂停或到达轮次上限；状态跨重启可恢复。",
   "config.builtInExtDesc.pi-deck-nul-redirect-fix": "NUL 重定向修复：bash 执行前把「> nul」等 Windows 重定向改写为 /dev/null，避免 Git Bash 产生删不掉的 nul 文件。",
-  "config.builtInExtDesc.pi-deck-plan-mode": "计划模式：先以只读工具集产出编号计划，经你选择执行/停留/修改后再恢复写工具，[DONE:n] 标记驱动进度展示。",
   "config.builtInExtDesc.pi-deck-retry-no-body": "瞬态错误重试增强：识别网关空响应、中文「服务暂时不可用」、stream_read_error 等 pi 重试名单外的瞬态故障并改写，触发自动重试。",
   "config.builtInExtDesc.pi-deck-security-gate": "安全门：按会话安全等级策略拦截工具调用——危险 bash 命令弹窗确认或直接拒绝；策略快照热更新，无需重启。",
   "config.builtInExtDesc.pi-deck-session-title": "会话标题生成：首轮结束后用独立最小上下文异步生成简短标题，不修改主对话与会话记录。",

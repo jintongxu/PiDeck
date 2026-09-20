@@ -331,6 +331,8 @@ export function ComposerBottomBar(props: {
 	/** 生成进行中已选定、本轮结束后才套到 Agent 的模型（显示为 from→to）。 */
 	modelPending?: ModelPending;
 	composerAgentMode: ComposerAgentMode;
+	/** pi-maestro-flow 当前通过 runtime UI status 投影的模式（ACT/PLAN/READY）。 */
+	maestroModeStatus?: string;
 	gitInfo?: GitBranchInfo;
 	/** 切换分支（右侧分支下拉）：经栏级 usePaneGitInfo 的 switchBranch 执行，
 	 *  成功后回写本栏 gitInfo 并通知 App（仅当本栏为聚焦项目时采纳），右侧 Git 面板与底栏保持同步。 */
@@ -449,7 +451,11 @@ export function ComposerBottomBar(props: {
 	const isPlanMode = props.composerAgentMode === "plan";
 	const isImageGenMode = props.composerAgentMode === "imagegen";
 	const isGoalMode = props.composerAgentMode === "goal";
-	const isSpecialMode = isPlanMode || isImageGenMode || isGoalMode;
+	const isDshPlanMode = isDsh && isPlanMode;
+	const isPiMaestroMode = props.backend === "pi" && !isImageGenMode;
+	// Pi 的 Plan/Act 由 pi-maestro-flow 自己维护，底栏只展示状态，不提供退出按钮。
+	// DSH Plan 与生图/Goal 仍保留本地控制入口。
+	const isSpecialMode = isDshPlanMode || (isDsh && isGoalMode) || isImageGenMode;
 	// 模式选择收进「+」菜单后，底栏不再常驻模式 chip；可用性（plan/goal 扩展开关、
 	// imagegen 仅 pi、imageGenLocked 锁定）由专用 hook 统一维护（原 ComposerModeSelect 逻辑）。
 	const { visibleModes, refreshAvailability } = useComposerModeAvailability({
@@ -517,8 +523,7 @@ export function ComposerBottomBar(props: {
 							)}
 						</button>
 					) : null}
-					{/* 特殊模式退出×：模式选择已收进「+」菜单，底栏只保留进行中模式的退出入口
-					    （imagegen 同样可退出；imageGenLocked 时无法切走故不显示）。 */}
+					{/* DSH/生图/Goal 特殊模式退出×；Pi Maestro 模式在安全等级右侧只读展示。 */}
 					{isSpecialMode && !props.imageGenLocked && (
 						<div className="composer-mode-cluster inline-flex h-7 min-w-0 items-center rounded-md bg-bg-hover pr-0.5">
 							<button
@@ -573,24 +578,27 @@ export function ComposerBottomBar(props: {
 								<FileText size={14} strokeWidth={2} aria-hidden="true" />
 								{t("app.composerAddPrompt")}
 							</DropdownMenuItem>
-							{/* 模式分组：普通/目标/规划/生图收进「+」，底栏只留进行中模式的退出×。
-							   用 DropdownMenuLabel 分组（附件/技能/提示词与模式不是同一维度）。 */}
-							<DropdownMenuLabel className="mt-1 text-micro font-medium text-muted-foreground">
-								{t("app.composerAddMode")}
-							</DropdownMenuLabel>
-							{visibleModes.map((mode) => (
-								<DropdownMenuItem
-									key={mode}
-									disabled={props.disabled}
-									onSelect={() => props.onChangeMode(mode)}
-								>
-									{modeGlyph(mode)}
-									{t(MODE_LABEL[mode])}
-									{mode === props.composerAgentMode && (
-										<Check size={14} strokeWidth={2} className="ml-auto text-primary" aria-hidden="true" />
-									)}
-								</DropdownMenuItem>
-							))}
+							{/* 只有 DSH 保留原生模式控制；Pi 的模式由 pi-maestro-flow 自动维护。 */}
+							{isDsh && visibleModes.length > 0 ? (
+								<>
+									<DropdownMenuLabel className="mt-1 text-micro font-medium text-muted-foreground">
+										{t("app.composerAddMode")}
+									</DropdownMenuLabel>
+									{visibleModes.map((mode) => (
+										<DropdownMenuItem
+											key={mode}
+											disabled={props.disabled}
+											onSelect={() => props.onChangeMode(mode)}
+										>
+											{modeGlyph(mode)}
+											{t(MODE_LABEL[mode])}
+											{mode === props.composerAgentMode && (
+												<Check size={14} strokeWidth={2} className="ml-auto text-primary" aria-hidden="true" />
+											)}
+										</DropdownMenuItem>
+									))}
+								</>
+							) : null}
 						</DropdownMenuContent>
 					</DropdownMenu>
 					{props.feishuIndicator}
@@ -611,6 +619,19 @@ export function ComposerBottomBar(props: {
 					{/* 生图模式无 pi/DSH runtime：安全等级（pi 安全门）与 DSH 权限预设都对图片生成无意义，
 					   且 SecurityControl 按 backend 分发时没有 imagegen 分支会误显示成 pi 安全等级菜单，故直接屏蔽。 */}
 					{isImageGenMode ? null : props.securityControl}
+					{isPiMaestroMode ? (
+						<div
+							className="composer-maestro-mode-indicator ml-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-foreground hover:bg-muted/60"
+							aria-label={t("app.composerModeMaestroStatus")}
+							title={`${t(isPlanMode ? "app.composerModePlan" : "app.composerModeNormal")} · ${t("app.composerModePlanStatus")}`}
+						>
+							{isPlanMode ? (
+								<ListChecks size={15} strokeWidth={2} aria-hidden="true" />
+							) : (
+								<Wrench size={15} strokeWidth={2} aria-hidden="true" />
+							)}
+						</div>
+					) : null}
 				</div>
 				<div
 					className={`composer-bottom-center flex min-w-0 flex-1 items-center justify-center gap-4${

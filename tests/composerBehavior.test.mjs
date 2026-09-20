@@ -151,30 +151,35 @@ test("keeps normal composer submissions visible without hidden agent instruction
 	assert.equal(submission.agentMessage, undefined);
 });
 
-test("wraps plan composer submissions with the hidden PiDeck plan marker", () => {
-	const { buildComposerPromptSubmission, PI_DECK_PLAN_MODE_MARKER } = loadComposerBehaviorModule();
+test("Pi Plan submissions stay visible and do not emit a PiDeck marker", () => {
+	const { buildComposerPromptSubmission } = loadComposerBehaviorModule();
 
 	const submission = buildComposerPromptSubmission("Inspect first", "plan");
 
 	assert.equal(submission.message, "Inspect first");
-	assert.match(submission.agentMessage, new RegExp(`^${PI_DECK_PLAN_MODE_MARKER}\\n`));
-	assert.match(submission.agentMessage, /Inspect first/);
-	assert.match(submission.agentMessage, /Plan:/);
+	assert.equal(submission.agentMessage, undefined);
 });
 
-test("wraps goal composer submissions with the hidden PiDeck goal marker", () => {
-	const { buildComposerPromptSubmission, PI_DECK_GOAL_MODE_MARKER } = loadComposerBehaviorModule();
+test("Pi Goal submissions no longer emit a retired PiDeck marker", () => {
+	const { buildComposerPromptSubmission } = loadComposerBehaviorModule();
 
 	const submission = buildComposerPromptSubmission("Ship the release", "goal");
 
 	assert.equal(submission.message, "Ship the release");
-	assert.equal(submission.agentMessage, `${PI_DECK_GOAL_MODE_MARKER}\nShip the release`);
+	assert.equal(submission.agentMessage, undefined);
 });
 
 test("goal and plan modes leave slash commands unmarked", () => {
 	const { buildComposerPromptSubmission } = loadComposerBehaviorModule();
 	assert.equal(buildComposerPromptSubmission("/goal pause", "goal").agentMessage, undefined);
 	assert.equal(buildComposerPromptSubmission("/plan off", "plan").agentMessage, undefined);
+});
+
+test("deriveComposerAgentMode maps pi-maestro-flow PLAN/READY status to Plan", () => {
+	const { deriveComposerAgentMode } = loadComposerBehaviorModule();
+	assert.equal(deriveComposerAgentMode({ backend: "pi", maestroMode: "PLAN" }), "plan");
+	assert.equal(deriveComposerAgentMode({ backend: "pi", maestroMode: "READY" }), "plan");
+	assert.equal(deriveComposerAgentMode({ backend: "pi", maestroMode: "ACT", localMode: "plan" }), "normal");
 });
 
 test("deriveComposerAgentMode keeps explicit normal over a still-active DSH goal", () => {
@@ -210,16 +215,6 @@ test("applyDshGoalSendTransform prefixes /goal only when creating a new objectiv
 		message: "/goal pause",
 		mode: "goal",
 	}), "/goal pause");
-});
-
-test("parsePiGoalWidget reads phase, rounds, and objective", () => {
-	const { parsePiGoalWidget } = loadComposerBehaviorModule();
-	const parsed = parsePiGoalWidget(["active · 3/32", "Ship the release"]);
-	assert.equal(parsed?.phase, "active");
-	assert.equal(parsed?.objective, "Ship the release");
-	assert.equal(parsed?.roundsStarted, 3);
-	assert.equal(parsed?.maxGoalRounds, 32);
-	assert.equal(parsePiGoalWidget(["not a header", "x"]), undefined);
 });
 
 // 复现：普通输入不重渲染 App，live ref 已是全文，但闭包里的 renderedPrompt 仍是旧值。

@@ -38,7 +38,7 @@
  *
  * 私有快照/标记条目（appendEntry）不发给模型，只用于状态重建与补注判定。
  *
- * This is intentionally independent from `pi-deck-plan-mode.ts`: plan mode has
+ * This is intentionally independent from pi-maestro-flow's Plan mode: Plan has
  * a separate lifecycle and continues to publish the `pi-deck-plan-todos` widget.
  *
  * @packageDocumentation

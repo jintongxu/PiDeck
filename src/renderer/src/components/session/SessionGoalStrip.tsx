@@ -3,9 +3,7 @@ import { useCallback, useRef, useState } from "react";
 import { Pause, Play, Target, Trash2 } from "lucide-react";
 import {
 	sessionRuntimeBySessionIdAtomFamily,
-	sessionRuntimeUiBySessionIdAtomFamily,
 } from "../../atoms";
-import { parsePiGoalWidget } from "../../composerBehavior";
 import { desktopApi } from "../../desktopApi";
 import { t } from "../../i18n";
 import { showNotice } from "../../utils/notice";
@@ -14,36 +12,19 @@ import { ConfirmDialog } from "../ui-shadcn/ConfirmDialog";
 import {
 	ComposerWidgetFrame,
 } from "./ComposerWidgetLayout";
-import {
-	isCoherentComposerRuntimeUi,
-	type RuntimeHandle,
-} from "./ComposerRuntimeIntegrations";
 
 /**
  * composer 上方的 goal 常驻条（移植自 dsh-web GoalBar）。
  *
  * 形态：与 todo / queue 同列同宽的独立 36px 卡（图标 + 阶段 + 截断目标 + 操作）。
- * 数据优先 DSH runtime.state.goal；pi 走内置扩展 widget `pi-deck-goal`。
- * 无目标、已完成都不渲染。创建入口是模式选择器 / `/goal` / DSH 工具面板。
+ * 数据来自 DSH runtime.state.goal；Pi 后端不再渲染 PiDeck Goal 条。
+ * 无目标、已完成都不渲染。创建入口是 DSH 模式/工具面板。
  */
 export function SessionGoalStrip(props: { sessionId: string }) {
 	const runtime = useAtomValue(sessionRuntimeBySessionIdAtomFamily(props.sessionId));
-	const runtimeUi = useAtomValue(sessionRuntimeUiBySessionIdAtomFamily(props.sessionId));
 	const agentId = runtime?.agentId;
 	const isDsh = runtime?.backend === "dsh";
-	const runtimeHandle: RuntimeHandle | undefined = runtime?.agentId
-		? { agentId: runtime.agentId, runtimeGeneration: runtime.runtimeGeneration }
-		: undefined;
-	const coherent = isCoherentComposerRuntimeUi(runtimeHandle, runtimeUi) ? runtimeUi : undefined;
-	const piGoal = parsePiGoalWidget(coherent?.widgets?.["pi-deck-goal"]);
-	const goal = runtime?.state?.goal ?? (piGoal
-		? {
-			phase: piGoal.phase,
-			objective: piGoal.objective,
-			roundsStarted: piGoal.roundsStarted,
-			maxGoalRounds: piGoal.maxGoalRounds,
-		}
-		: undefined);
+	const goal = isDsh ? runtime?.state?.goal : undefined;
 	const [busy, setBusy] = useState(false);
 	const [confirmClear, setConfirmClear] = useState(false);
 	const pendingRef = useRef(false);

@@ -64,10 +64,9 @@ test("listActiveBuiltInExtensionPaths respects removedBuiltIn and missing files"
 		);
 		assert.equal(paths.length, 1);
 		assert.ok(String(paths[0]).endsWith("pi-deck-ask-question.ts"));
-		// 内置扩展清单随版本增长：ask/goal/nul-redirect/plan-mode/retry-no-body/security-gate/session-title/subagents/todo/vision
-		// 内置扩展清单随版本增长：ask/goal/nul-redirect/plan-mode/request-size-recovery/retry-no-body/security-gate/session-title/subagents/todo/trash-guard/vision
-		assert.equal(BUILT_IN_EXTENSIONS.length, 12);
-		assert.ok(BUILT_IN_EXTENSIONS.includes("pi-deck-goal-mode.ts"));
+		// 内置扩展清单随版本增长；PiDeck Plan 已由 pi-maestro-flow 接管，不再注入。
+		assert.equal(BUILT_IN_EXTENSIONS.length, 10);
+		assert.equal(BUILT_IN_EXTENSIONS.includes("pi-deck-goal-mode.ts"), false);
 		assert.ok(BUILT_IN_EXTENSIONS.includes("pi-deck-session-title.ts"));
 		assert.ok(BUILT_IN_EXTENSIONS.includes("pi-deck-trash-guard.ts"));
 	} finally {
@@ -88,7 +87,7 @@ test("retired pi-deck-todo is never returned as an active built-in path", () => 
 			[],
 		);
 		assert.equal(paths.some((path) => path.endsWith("pi-deck-todo.ts")), false);
-		assert.equal(paths.some((path) => path.endsWith("pi-deck-plan-mode.ts")), true);
+		assert.equal(paths.some((path) => path.endsWith("pi-deck-plan-mode.ts")), false);
 		assert.equal(isDisabledBuiltInExtensionSource("npm:@earendil-works/pi-deck-todo@1.0.0"), true);
 		assert.equal(isDisabledBuiltInExtensionSource("C:/extensions/pi-deck-todo.ts"), true);
 		assert.equal(isDisabledBuiltInExtensionSource("npm:pi-web-access"), false);

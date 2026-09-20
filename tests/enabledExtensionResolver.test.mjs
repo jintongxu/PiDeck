@@ -176,8 +176,7 @@ test("内置扩展注入：removedBuiltInExtensions 剔除 + 资源缺失跳过"
 	try {
 		const extDir = mkdir("resources/extensions");
 		writeFileSync(join(extDir, "pi-deck-todo.ts"), "// todo");
-		writeFileSync(join(extDir, "pi-deck-plan-mode.ts"), "// plan");
-		// pi-deck-vision.ts 故意不写 → 缺失跳过（listActiveBuiltInExtensionPaths 已过滤）
+		// pi-deck-plan-mode.ts / pi-deck-goal-mode.ts / pi-deck-vision.ts 均不再作为 PiDeck 内置扩展注入
 
 		const result = resolveEnabledExtensionPaths({
 			agentHomeDir: home,
@@ -187,7 +186,7 @@ test("内置扩展注入：removedBuiltInExtensions 剔除 + 资源缺失跳过"
 			builtInRoots: { appPath: root, resourcesPath: root, isDev: true },
 		});
 		const builtIns = (result ?? []).filter((p) => p.includes("pi-deck-"));
-		same(builtIns, [join(extDir, "pi-deck-plan-mode.ts")]);
+		same(builtIns, []);
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}

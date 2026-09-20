@@ -58,14 +58,10 @@ function loadExtensionConflictHelpers() {
 
 const { extensionNameMatches, BUILT_IN_CONFLICT_KEYWORDS } = loadExtensionConflictHelpers();
 
-test("only plan / goal / ask built-ins participate in conflict detection", () => {
-	assert.equal(BUILT_IN_CONFLICT_KEYWORDS.length, 3);
-	assert.equal(BUILT_IN_CONFLICT_KEYWORDS[0][0], "pi-deck-plan-mode.ts");
-	assert.equal(BUILT_IN_CONFLICT_KEYWORDS[0][1], "plan");
-	assert.equal(BUILT_IN_CONFLICT_KEYWORDS[1][0], "pi-deck-goal-mode.ts");
-	assert.equal(BUILT_IN_CONFLICT_KEYWORDS[1][1], "goal");
-	assert.equal(BUILT_IN_CONFLICT_KEYWORDS[2][0], "pi-deck-ask-question.ts");
-	assert.equal(BUILT_IN_CONFLICT_KEYWORDS[2][1], "ask");
+test("only the PiDeck ask built-in participates in conflict detection", () => {
+	assert.equal(BUILT_IN_CONFLICT_KEYWORDS.length, 1);
+	assert.equal(BUILT_IN_CONFLICT_KEYWORDS[0][0], "pi-deck-ask-question.ts");
+	assert.equal(BUILT_IN_CONFLICT_KEYWORDS[0][1], "ask");
 });
 
 test("names containing todo conflict with system todo keyword", () => {

@@ -3,7 +3,7 @@ import type { TodoItem, TodoItemStatus } from "../agents/todo-list";
 /** 与官方 BeUI TodoItem 对齐的解析结果（title 恒为 string）。 */
 export type AgentTodoItem = TodoItem;
 
-// 内置扩展（resources/extensions/pi-deck-todo.ts / pi-deck-plan-mode.ts）的 widget 行格式
+// 内置 Todo 扩展（resources/extensions/pi-deck-todo.ts）的 widget 行格式
 // 是数据契约而非 UI 文案，解析侧硬编码这些字面量是合理的（不经过 i18n）。
 /** 计划元数据由 pi-deck-todo 专用入口过滤；通用 parser 不解释它，避免影响第三方 widget。 */
 const PI_DECK_TODO_PLAN_METADATA_LINE = /^\[\[pid:todo-plan:[^\]]+\]\]$/;

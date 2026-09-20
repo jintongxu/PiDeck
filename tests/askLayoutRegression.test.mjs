@@ -54,11 +54,6 @@ const securityCard = readFileSync(
   "src/renderer/src/components/overlays/SecurityConfirmCard.tsx",
   "utf8",
 );
-const planModeExt = readFileSync(
-  "resources/extensions/pi-deck-plan-mode.ts",
-  "utf8",
-);
-
 test("Ask cards keep long content readable in every render path", () => {
   // 选项卡片/描述必须换行展示（break-words whitespace-normal），不能截断或裁切；
   // 注意批量问答 tab 胶囊是例外：tab 只做单行摘要（truncate），完整问题在详情区展示。
@@ -102,22 +97,9 @@ test("Plan/simple select options render as single-row optically aligned buttons"
   assert.match(overlay, /min-w-0 flex-1 truncate text-micro leading-none text-text-tertiary/);
 });
 
-test("Plan mode prompts keep steps concise and visually separated", () => {
-  // 2026-12 用户反馈：步骤挤在一起难读。两处约束：
-  // 1) 注入模型的 PLAN MODE 提示词要求每步一句短句、独立编号行（从源头控制简洁度）；
-  // 2) 选单标题里每步之间空一行，卡片段落视觉隔离。
-  assert.match(planModeExt, /Keep plan steps concise: one short sentence per step/);
-  assert.match(planModeExt, /Put each step on its own numbered line/);
-  assert.match(planModeExt, /\.join\("\\n\\n"\)/);
-  // 摘要行带「是否执行」提问：卡片默认折叠时也能看懂下一步待确认的动作。
-  assert.match(planModeExt, /是否执行？/);
-  // 摘要第二行引导用户去上方待办条查看详细列表（2026-12 用户反馈：单一提问行不够明显）。
-  assert.match(planModeExt, /具体计划可点击下方待办查看详细列表/);
-});
-
 test("Long ask descriptions collapse to a preview with eye toggle", () => {
-  // 2026-12 用户反馈：plan 草案步骤太多导致卡片过高。默认折叠为 2 行摘要，
-  // hover（title）可看全文，眼睛按钮显式切换全文/摘要；不传 previewLines 时行为不变。
+  // 计划草案步骤较多时默认折叠为 2 行摘要，hover（title）可看全文，眼睛按钮显式切换全文/摘要；
+  // pi-maestro-flow 的计划正文由其自己的计划审查流程负责。
   assert.match(approvalCard, /descriptionPreviewLines\?: number/);
   assert.match(approvalCard, /descriptionClamped && "line-clamp-2"/);
   assert.match(approvalCard, /title=\{descriptionClamped \? props\.description : undefined\}/);
@@ -125,10 +107,6 @@ test("Long ask descriptions collapse to a preview with eye toggle", () => {
   // live 卡与时间线卡都用 2 行预览：提问行 + 引导去待办查看详情，步骤默认隐藏。
   // （TimelineEventCards 的 AskQuestionCard 死代码已删除，交互卡统一由 overlay 承载）
   assert.match(overlay, /descriptionPreviewLines=\{2\}/);
-  // 「1口」乱码回归：plan 草案步骤前缀不得用 ☐（部分 Windows 字体渲染成空心方框）。
-  // widget/进度消息的 ☑/☐ 保留（agentTodoList 测试锁定，完成态语义明确）。
-  assert.doesNotMatch(planModeExt, /\$\(item\.step\)\. ☐/);
-
   // 折叠触发器只能包 chevron：标题/描述若包进 trigger，划选结束后的 mouseup 会把选项折起来。
   const triggerBlocks = [...approvalCard.matchAll(/<CollapsibleTrigger asChild>[\s\S]*?<\/CollapsibleTrigger>/g)];
   assert.equal(triggerBlocks.length, 1);

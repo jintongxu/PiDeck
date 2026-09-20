@@ -8,8 +8,6 @@ export type ComposerEnterIntent = "ignore" | "newline" | "send";
 import type { AgentBackend, ComposerAgentMode } from "@shared/types";
 import { formatPromptTemplateBlock } from "./components/session/composer/referenceBlocks";
 
-export const PI_DECK_PLAN_MODE_MARKER = "__PI_DECK_PLAN_MODE__";
-export const PI_DECK_GOAL_MODE_MARKER = "__PI_DECK_GOAL_MODE__";
 
 export type ComposerPromptSubmission = {
 	/** 用户在 PiDeck 时间线里看到的原始消息，不能包含桌面端内部控制标记。 */
@@ -20,8 +18,8 @@ export type ComposerPromptSubmission = {
 
 /**
  * 构造发送给主进程的 composer 快照。
- * Plan 模式依赖 PiDeck 内置 extension 在 pi 的 input 事件里识别隐藏标记；
- * 用户可见消息保持原文，避免会话时间线出现实现细节或控制 token。
+ * Goal 模式依赖 PiDeck Goal extension 在 pi 的 input 事件里识别隐藏标记；
+ * Plan 模式由 pi-maestro-flow 的私有控制 marker 管理；用户可见消息保持原文。
  */
 /**
  * Prompt Template 类型，与 App.tsx 中 promptTemplateList 类型一致。
@@ -253,26 +251,36 @@ export type DshGoalModeSnapshot = {
 };
 
 /**
- * 桌面端派生 composer 模式。DSH：plan 由 host 持有；goal 由本地选择或进行中/阻塞的目标驱动。
- * 切回普通会把本地 mode 写成 normal，因此 paused 目标不会把选择器锁在目标模式。
+ * pi-maestro-flow 的 `ctx.ui.setStatus("mode", ...)` 状态：ACT=执行态，
+ * PLAN/READY=计划态（READY 表示已有草案）。Pi 后端的计划事实只来自该 status，
+ * 不再由 PiDeck 自己的 marker 或本地 mode atom 另造一份状态机。
+ */
+export type MaestroPlanModeStatus = "ACT" | "PLAN" | "READY";
+
+export function isMaestroPlanModeStatus(value: string | undefined): boolean {
+	return value === "PLAN" || value === "READY";
+}
+
+/**
+ * 桌面端派生 composer 模式。DSH 仍由 host 的 planModeActive/goal 投影驱动；
+ * Pi 的计划状态由 pi-maestro-flow 的 runtime UI status 驱动。
  */
 export function deriveComposerAgentMode(input: {
 	backend?: AgentBackend;
 	localMode?: ComposerAgentMode;
 	planModeActive?: boolean;
+	maestroMode?: string;
 	goalPhase?: DshGoalModeSnapshot["phase"];
 }): ComposerAgentMode {
 	const localMode = input.localMode;
-	// imagegen 是独立后端：会话为生图后端时恒为生图模式（无 LLM mode 概念）
 	if (input.backend === "imagegen") return "imagegen";
-	// 遗留兼容：legacy 生图消息在 pi 会话上，localMode 仍可能是 imagegen，保留
 	if (localMode === "imagegen") return "imagegen";
-	if (input.backend !== "dsh") return localMode ?? "normal";
+	if (input.backend !== "dsh") {
+		return isMaestroPlanModeStatus(input.maestroMode) ? "plan" : "normal";
+	}
 	if (input.planModeActive) return "plan";
-	// 用户刚切回普通时 localMode 为 "normal"：即使 pause IPC 尚未落地，也不要把选择器弹回目标。
 	if (localMode === "normal") return "normal";
 	if (localMode === "goal") return "goal";
-	// 刷新后 atom 为空：进行中/阻塞的目标把选择器恢复为 goal。
 	if (input.goalPhase === "active" || input.goalPhase === "blocked") return "goal";
 	return "normal";
 }
@@ -294,38 +302,6 @@ export function applyDshGoalSendTransform(input: {
 	return `/goal ${trimmed}`;
 }
 
-/** 解析 pi-deck-goal-mode widget 行：`phase · rounds/max` + 目标 + 可选阻塞原因。 */
-export function parsePiGoalWidget(lines: readonly string[] | undefined): {
-	phase: "active" | "paused" | "blocked" | "complete";
-	objective: string;
-	roundsStarted: number;
-	maxGoalRounds: number;
-	blockReason?: string;
-} | undefined {
-	if (!lines || lines.length < 2) return undefined;
-	const header = lines[0]?.trim() ?? "";
-	const match = header.match(/^(active|paused|blocked|complete)\s*·\s*(\d+)\s*\/\s*(\d+)\s*$/);
-	if (!match) return undefined;
-	const objective = lines[1]?.trim() ?? "";
-	if (!objective) return undefined;
-	const phaseToken = match[1];
-	if (
-		phaseToken !== "active" &&
-		phaseToken !== "paused" &&
-		phaseToken !== "blocked" &&
-		phaseToken !== "complete"
-	) {
-		return undefined;
-	}
-	return {
-		phase: phaseToken,
-		objective,
-		roundsStarted: Number(match[2]),
-		maxGoalRounds: Number(match[3]),
-		...(phaseToken === "blocked" && lines[2]?.trim() ? { blockReason: lines[2].trim() } : {}),
-	};
-}
-
 export function buildComposerPromptSubmission(
 	message: string,
 	mode: ComposerAgentMode,
@@ -334,30 +310,6 @@ export function buildComposerPromptSubmission(
 	// 斜线命令原样发送，让 pi 解析执行——plan/goal 模式下也能用 /plan off、/goal pause。
 	// 否则隐藏标记前缀会把命令变成普通消息发给 LLM。
 	if (trimmed.startsWith("/")) return { message };
-
-	if (mode === "plan") {
-		const visibleInstruction = trimmed || "请根据已附加的图片或上下文先制定实施计划。";
-		return {
-			message,
-			agentMessage: [
-				PI_DECK_PLAN_MODE_MARKER,
-				visibleInstruction,
-				"",
-				"请先只做只读分析，不要修改文件。最后必须输出以 `Plan:` 开头的编号计划，格式如下：",
-				"Plan:",
-				"1. 第一步",
-				"2. 第二步",
-			].join("\n"),
-		};
-	}
-
-	if (mode === "goal") {
-		const visibleInstruction = trimmed || "请继续当前目标。";
-		return {
-			message,
-			agentMessage: [PI_DECK_GOAL_MODE_MARKER, visibleInstruction].join("\n"),
-		};
-	}
 
 	return { message };
 }

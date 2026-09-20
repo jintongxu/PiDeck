@@ -31,6 +31,7 @@ import type {
 	SessionTodoSnapshot,
 } from "../../shared/types";
 import { ipcChannels } from "../../shared/ipc";
+import { PIDECK_MAESTRO_PLAN_ENTER, PIDECK_MAESTRO_PLAN_EXIT } from "../../shared/maestroControls";
 import { collectSessionFileChanges } from "../../shared/fileChanges";
 import {
 	COMPACT_CANCELLED_BY_OWNER,
@@ -1886,6 +1887,8 @@ export class AgentManager {
 		const trimmed = input.message.trim();
 		const hasImages = input.images && input.images.length > 0;
 		const isPrivateSshControl = trimmed === "__pideck_ssh_control__";
+		const isPrivateMaestroPlanControl = trimmed === PIDECK_MAESTRO_PLAN_ENTER || trimmed.startsWith(`${PIDECK_MAESTRO_PLAN_ENTER}\n`) || trimmed === PIDECK_MAESTRO_PLAN_EXIT;
+		const isPrivateControl = isPrivateSshControl || isPrivateMaestroPlanControl;
 		const agentMessage = input.agentMessage?.trim() || trimmed || "Describe this image.";
 		// 允许只有图片没有文字的情况发送
 		if (!trimmed && !hasImages) {
@@ -1958,7 +1961,7 @@ export class AgentManager {
 			// 删除按钮仍拿着乐观 id，不能再另起 UUID 导致 Message not found。
 			...(input.requestId ? { requestId: input.requestId } : {}),
 		};
-		if (!isPrivateSshControl) {
+		if (!isPrivateControl) {
 			this.addMessage(
 				input.agentId,
 				"user",
@@ -1973,7 +1976,7 @@ export class AgentManager {
 		// 后续消息必须带 streamingBehavior 否则 pi 直接返回 error。这里自动兜底。
 		// images 用于传递粘贴/拖拽的图片，pi 会将 base64 图片直接传给支持视觉的模型。
 		try {
-			const promptIsExtensionCommand = isPrivateSshControl ||
+			const promptIsExtensionCommand = isPrivateControl ||
 				await this.promptMatchesRegisteredExtensionCommand(runtime, agentMessage);
 			const requestPayload: Record<string, unknown> = {
 				type: "prompt",

@@ -13,9 +13,7 @@ import {
 export const BUILT_IN_EXTENSIONS = [
 	"pi-deck-request-size-recovery.ts",
 	"pi-deck-ask-question.ts",
-	"pi-deck-goal-mode.ts",
 	"pi-deck-nul-redirect-fix.ts",
-	"pi-deck-plan-mode.ts",
 	"pi-deck-retry-no-body.ts",
 	"pi-deck-security-gate.ts",
 	"pi-deck-session-title.ts",
