@@ -28,6 +28,7 @@ export const ipcChannels = {
 	projectIdeasCreate: "project-ideas:create",
 	projectIdeasUpdate: "project-ideas:update",
 	projectIdeasDelete: "project-ideas:delete",
+	projectIdeasUploadImage: "project-ideas:upload-image",
 	editorsList: "editors:list",
 	editorsRedetect: "editors:redetect",
 	editorsUpdate: "editors:update",

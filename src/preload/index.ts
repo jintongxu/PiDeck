@@ -281,6 +281,8 @@ const api = {
 				ipcRenderer.invoke(ipcChannels.projectIdeasUpdate, id, projectId, patch) as Promise<ProjectIdea>,
 			delete: (id: string, projectId: string) =>
 				ipcRenderer.invoke(ipcChannels.projectIdeasDelete, id, projectId) as Promise<boolean>,
+			uploadImage: (dataUrl: string) =>
+				ipcRenderer.invoke(ipcChannels.projectIdeasUploadImage, dataUrl) as Promise<string>,
 		},
 		// 通过 pi --list-models 获取可用模型列表（无需启动 agent）
 		listModels: (projectId?: string) =>

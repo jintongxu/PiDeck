@@ -24,6 +24,7 @@ import {
 	toWindowsHostPath,
 	type WslEnvironment,
 } from "../wsl/WslPaths";
+import { uploadImageToPicGo } from "../projects/picgoUpload";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
 	return typeof value === "object" && value !== null;
@@ -300,6 +301,10 @@ export function registerProjectsIpc({
 		if (!existing) throw new Error("PROJECT_IDEA_NOT_FOUND");
 		if (existing.projectId !== ownerProjectId) throw new Error("PROJECT_IDEA_PROJECT_MISMATCH");
 		return projectIdeaStore.delete(id);
+	});
+	ipcMain.handle(ipcChannels.projectIdeasUploadImage, async (_event, dataUrl: unknown) => {
+		if (typeof dataUrl !== "string") throw new Error("PICGO_IMAGE_INVALID");
+		return uploadImageToPicGo(dataUrl);
 	});
 
 	// ── Worktree 项目管理 ──

@@ -375,6 +375,7 @@ export function createPreviewApi(): PiDesktopApi {
 					updatedAt: Date.now(),
 				}),
 				delete: async (_id, _projectId) => true,
+				uploadImage: async () => "https://picgo.example/preview.png",
 			},
 			listModels: async () => [],
 			// 预览 iframe 不需要真实模型目录：构造一个恒空报告（无失败原因），
