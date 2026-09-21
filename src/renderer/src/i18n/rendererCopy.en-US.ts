@@ -391,8 +391,6 @@ export const enUS: Record<TranslationKey, string> = {
   "app.composerModeNormal": "Normal Mode",
   "app.composerModeNormalDesc": "Direct execution for normal tasks and edits",
   "app.composerModePlan": "Plan Mode",
-  "app.composerModePlanStatus": "Managed by pi-maestro-flow",
-  "app.composerModeMaestroStatus": "Current mode (managed by pi-maestro-flow)",
   "app.composerModePlanDesc": "Read-only first, then generate a plan for confirmation",
   "app.composerModeGoal": "Goal Mode",
   "app.composerModeGoalDesc": "Keep working toward one objective until it is complete, blocked, or paused",

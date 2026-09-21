@@ -31,7 +31,7 @@ import type {
 	SessionTodoSnapshot,
 } from "../../shared/types";
 import { ipcChannels } from "../../shared/ipc";
-import { PIDECK_MAESTRO_PLAN_ENTER, PIDECK_MAESTRO_PLAN_EXIT } from "../../shared/maestroControls";
+import { resolveMaestroPlanControlCommand } from "../../shared/maestroControls";
 import { collectSessionFileChanges } from "../../shared/fileChanges";
 import {
 	COMPACT_CANCELLED_BY_OWNER,
@@ -1887,9 +1887,9 @@ export class AgentManager {
 		const trimmed = input.message.trim();
 		const hasImages = input.images && input.images.length > 0;
 		const isPrivateSshControl = trimmed === "__pideck_ssh_control__";
-		const isPrivateMaestroPlanControl = trimmed === PIDECK_MAESTRO_PLAN_ENTER || trimmed.startsWith(`${PIDECK_MAESTRO_PLAN_ENTER}\n`) || trimmed === PIDECK_MAESTRO_PLAN_EXIT;
-		const isPrivateControl = isPrivateSshControl || isPrivateMaestroPlanControl;
-		const agentMessage = input.agentMessage?.trim() || trimmed || "Describe this image.";
+		const maestroPlanCommand = resolveMaestroPlanControlCommand(trimmed);
+		const isPrivateControl = isPrivateSshControl || maestroPlanCommand !== null;
+		const agentMessage = (maestroPlanCommand ?? input.agentMessage?.trim()) || trimmed || "Describe this image.";
 		// 允许只有图片没有文字的情况发送
 		if (!trimmed && !hasImages) {
 			return {
@@ -5422,7 +5422,9 @@ export class AgentManager {
 		if (method === "notify") {
 			const message = stripAnsi(String(typed.message ?? ""));
 			// 只屏蔽客户端弹出提醒，不改动 pi 的 LSP 检查、工具结果或会话记录。
-			if (/^LSP check unavailable\b/i.test(message.trimStart())) return;
+			// PlanStore 的进入提示会把内部 current.md 路径暴露成 toast；Plan 状态由
+			// Maestro/Plan 审批链路维护，不需要在 Composer 上再弹一次路径卡片。
+			if (/^LSP check unavailable\b/i.test(message.trimStart()) || /^Plan mode · /i.test(message.trimStart())) return;
 			this.emit(ipcChannels.agentsUiRequest, {
 				agentId,
 				requestId,

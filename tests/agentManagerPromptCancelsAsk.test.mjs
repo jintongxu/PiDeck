@@ -3,6 +3,7 @@ import test from "node:test";
 import { loadTsCommonJs } from "./helpers/loadTsCommonJs.mjs";
 const { ipcChannels } = loadTsCommonJs("src/shared/ipc.ts");
 const { AgentManager } = loadTsCommonJs("src/main/pi/AgentManager.ts");
+const { PIDECK_MAESTRO_PLAN_EXIT } = loadTsCommonJs("src/shared/maestroControls.ts");
 
 /**
  * 验证：当 Agent 正在等待 Ask 提问时，用户直接发送新消息（sendPrompt），
@@ -74,6 +75,22 @@ function createManagerWithRunningAsk() {
 
 	return { manager, runtime, rawSent, emitted, rpcRequests };
 }
+
+test("Maestro Plan exit marker is hidden and sent to Pi as the registered /plan exit command", async () => {
+	const { manager, runtime, rpcRequests } = createManagerWithRunningAsk();
+	runtime.tab.status = "idle";
+	manager.pendingUIRequests.clear();
+
+	const result = await manager.sendPrompt({
+		agentId: "agent-1",
+		message: PIDECK_MAESTRO_PLAN_EXIT,
+	});
+
+	assert.equal(result.accepted, true);
+	const prompt = rpcRequests.find((request) => request.type === "prompt");
+	assert.equal(prompt?.message, "/plan exit");
+	assert.doesNotMatch(JSON.stringify(rpcRequests), /__pideck_maestro_plan_exit__/);
+});
 
 test("sendPrompt 在存在 pending UI 请求时应自动取消 Ask，解除底层阻塞并通知渲染层", async () => {
 	const { manager, rawSent, emitted, rpcRequests } = createManagerWithRunningAsk();

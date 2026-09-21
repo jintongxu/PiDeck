@@ -34,6 +34,17 @@ function createProjector(isAskAborted = () => false) {
   return new AgentMessageProjector({ translate, isAskAborted });
 }
 
+test("hides the Maestro approved-Plan execution contract without shifting entry IDs", () => {
+  const messages = createProjector().convert("agent", [
+    { role: "user", content: [{ type: "text", text: "The user selected Execute and explicitly authorized immediate implementation of the approved Plan.\nBegin execution now. Do not ask the user to trigger implementation again.\nThe approved Plan is already in the current context.\nPlan source: C:/workspace/current.md" }], timestamp: 1 },
+    { role: "user", content: [{ type: "text", text: "The actual user request" }], timestamp: 2 },
+  ], ["entry-contract", "entry-user"]);
+
+  assert.deepEqual(messages.map((message) => ({ text: message.text, entryId: message.meta.entryId })), [
+    { text: "The actual user request", entryId: "entry-user" },
+  ]);
+});
+
 test("keeps thinking-only history turns and their entry IDs aligned", () => {
   const messages = createProjector().convert("agent", [
     { role: "user", content: [{ type: "text", text: "Inspect this" }], timestamp: 1 },

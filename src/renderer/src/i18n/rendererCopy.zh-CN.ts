@@ -392,8 +392,6 @@ export const zhCN = {
   "app.composerModeNormal": "普通模式",
   "app.composerModeNormalDesc": "直接执行，适合日常修改和确认过的任务",
   "app.composerModePlan": "计划模式",
-  "app.composerModePlanStatus": "由 pi-maestro-flow 管理",
-  "app.composerModeMaestroStatus": "当前模式（由 pi-maestro-flow 管理）",
   "app.composerModePlanDesc": "先只读分析并生成计划，需要你确认后再执行",
   "app.composerModeGoal": "目标模式",
   "app.composerModeGoalDesc": "围绕一条目标自动连续推进，直到完成、阻塞或你暂停",

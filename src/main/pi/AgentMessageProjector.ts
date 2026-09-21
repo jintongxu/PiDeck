@@ -22,6 +22,19 @@ function stripAnsi(text: string): string {
 	return text.replace(/\x1b\[[0-9;]*[a-zA-Z]/g, "");
 }
 
+/**
+ * pi-maestro-flow sends this approved-Plan execution contract back through
+ * Pi's user-message channel so the model receives it as an internal handoff.
+ * Keep it in Pi's transcript/context, but do not render the implementation
+ * contract as a user chat bubble in PiDeck.
+ */
+export function isMaestroPlanExecutionContract(text: string): boolean {
+	const normalized = text.trimStart();
+	return normalized.startsWith("The user selected Execute and explicitly authorized immediate implementation of the approved Plan.") &&
+		normalized.includes("Begin execution now. Do not ask the user to trigger implementation again.") &&
+		normalized.includes("The approved Plan is already in the current context.");
+}
+
 export function buildActiveBranchEntryIds(
 		entries: Array<{ id: string; parentId: string | null; type?: string; message?: { role?: string } }>,
 		leafId: string,
@@ -85,7 +98,7 @@ export class AgentMessageProjector {
 					const images = this.extractImages(typed.content);
 					const text = this.extractText(typed.content) ||
 						(images.length > 0 ? this.deps.translate("session.imagePlaceholder") : "");
-					if (!text.trim()) return [];
+					if (!text.trim() || isMaestroPlanExecutionContract(text)) return [];
 					return [{
 						id: `${agentId}-history-${currentEntryId ?? index}`,
 						agentId,

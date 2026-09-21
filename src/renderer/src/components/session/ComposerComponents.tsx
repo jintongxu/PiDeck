@@ -452,7 +452,6 @@ export function ComposerBottomBar(props: {
 	const isImageGenMode = props.composerAgentMode === "imagegen";
 	const isGoalMode = props.composerAgentMode === "goal";
 	const isDshPlanMode = isDsh && isPlanMode;
-	const isPiMaestroMode = props.backend === "pi" && !isImageGenMode;
 	// Pi 的 Plan/Act 由 pi-maestro-flow 自己维护，底栏只展示状态，不提供退出按钮。
 	// DSH Plan 与生图/Goal 仍保留本地控制入口。
 	const isSpecialMode = isDshPlanMode || (isDsh && isGoalMode) || isImageGenMode;
@@ -619,19 +618,6 @@ export function ComposerBottomBar(props: {
 					{/* 生图模式无 pi/DSH runtime：安全等级（pi 安全门）与 DSH 权限预设都对图片生成无意义，
 					   且 SecurityControl 按 backend 分发时没有 imagegen 分支会误显示成 pi 安全等级菜单，故直接屏蔽。 */}
 					{isImageGenMode ? null : props.securityControl}
-					{isPiMaestroMode ? (
-						<div
-							className="composer-maestro-mode-indicator ml-0.5 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-foreground hover:bg-muted/60"
-							aria-label={t("app.composerModeMaestroStatus")}
-							title={`${t(isPlanMode ? "app.composerModePlan" : "app.composerModeNormal")} · ${t("app.composerModePlanStatus")}`}
-						>
-							{isPlanMode ? (
-								<ListChecks size={15} strokeWidth={2} aria-hidden="true" />
-							) : (
-								<Wrench size={15} strokeWidth={2} aria-hidden="true" />
-							)}
-						</div>
-					) : null}
 				</div>
 				<div
 					className={`composer-bottom-center flex min-w-0 flex-1 items-center justify-center gap-4${

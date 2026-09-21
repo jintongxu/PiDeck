@@ -481,6 +481,7 @@ export function useSessionSend(options: UseSessionSendOptions) {
       visibleMessage,
       isDshSend ? "normal" : sendMode,
     );
+    const agentMessage = submission.agentMessage;
 
     try {
       const result = await options.sendPrompt({
@@ -488,7 +489,7 @@ export function useSessionSend(options: UseSessionSendOptions) {
         requestId,
         message: submission.message,
         ...(imageSnapshot ? { images: imageSnapshot } : {}),
-        ...(submission.agentMessage ? { agentMessage: submission.agentMessage } : {}),
+        ...(agentMessage ? { agentMessage } : {}),
         ...(description ? { description } : {}),
         ...(streamingBehavior ? { streamingBehavior } : {}),
       });

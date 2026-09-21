@@ -1,13 +1,18 @@
 {
   "schemaVersion": 1,
   "version": "1.0.0",
-  "bundleSha256": "48b4565e32963e21b665847ad851ce411a822134892d439793e7174a556f03d3",
-  "fileCount": 11,
+  "bundleSha256": "ea6e3cdc78cd9685658bd499a975e64560309f8d6701b8c6e0518e221cc5ad35",
+  "fileCount": 12,
   "files": [
     {
       "name": "pi-deck-ask-question.ts",
       "sha256": "f9f04c1255c2b89b3ca243b66cc7affc073f9c7282d71e8b404a1a4b21c9c4d2",
       "bytes": 20623
+    },
+    {
+      "name": "pi-deck-maestro-auto-approve.ts",
+      "sha256": "400b3442c7b0922cc85f508584085b1ad7c9199dec755d286a27fa284365e633",
+      "bytes": 3835
     },
     {
       "name": "pi-deck-nul-redirect-fix.ts",

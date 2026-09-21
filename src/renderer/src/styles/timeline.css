@@ -1703,7 +1703,6 @@ body.ask-dialog-open .ask-card-preview {
 }
 .composer-box.shell-mode::before,
 .composer-box.shell-silent-mode::before,
-.composer-box.plan-mode::before,
 .composer-box.goal-mode::before {
   opacity: 1;
 }
@@ -1713,32 +1712,25 @@ body.ask-dialog-open .ask-card-preview {
 .composer-box.shell-silent-mode::before {
   background: color-mix(in srgb, var(--color-danger) 72%, transparent);
 }
-.composer-box.plan-mode::before {
-  background: color-mix(in srgb, var(--color-brand-green) 72%, transparent);
-}
 .composer-box.goal-mode::before {
   /* 默认 zinc 主题 accent 近黑：实心会变成粗黑条，混一点透明才像细强调线。 */
   background: color-mix(in srgb, var(--color-accent) 55%, transparent);
 }
 .composer-box.shell-mode textarea,
 .composer-box.shell-silent-mode textarea,
-.composer-box.plan-mode textarea,
 .composer-box.goal-mode textarea {
   padding-left: 18px;
 }
 .composer-box.shell-mode .rich-input,
 .composer-box.shell-silent-mode .rich-input,
-.composer-box.plan-mode .rich-input,
 .composer-box.goal-mode .rich-input,
 .composer-box.shell-mode .ProseMirror,
 .composer-box.shell-silent-mode .ProseMirror,
-.composer-box.plan-mode .ProseMirror,
 .composer-box.goal-mode .ProseMirror {
   padding-left: 18px;
 }
 .composer-box.shell-mode .rich-input.is-editor-empty::before,
 .composer-box.shell-silent-mode .rich-input.is-editor-empty::before,
-.composer-box.plan-mode .rich-input.is-editor-empty::before,
 .composer-box.goal-mode .rich-input.is-editor-empty::before {
   left: 18px;
 }

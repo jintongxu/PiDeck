@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
+import { loadTsCommonJs } from "./helpers/loadTsCommonJs.mjs";
 
 const agentTypes = readFileSync("src/shared/types/agent.ts", "utf8");
 const composerComponents = readFileSync("src/renderer/src/components/session/ComposerComponents.tsx", "utf8");
@@ -10,7 +11,6 @@ const builtIns = readFileSync("src/main/extensions/builtInExtensions.ts", "utf8"
 const sendHook = readFileSync("src/renderer/src/hooks/useSessionSend.ts", "utf8");
 const agentManager = readFileSync("src/main/pi/AgentManager.ts", "utf8");
 const maestroControls = readFileSync("src/shared/maestroControls.ts", "utf8");
-const maestroPatch = readFileSync("scripts/patch-pi-maestro-plan.mjs", "utf8");
 const packageJson = readFileSync("package.json", "utf8");
 const timelineCss = readFileSync("src/renderer/src/styles/timeline.css", "utf8");
 
@@ -22,6 +22,7 @@ test("Goal remains a DSH-native ComposerAgentMode, not a PiDeck Pi extension", (
 
 test("Plan mode is sourced from pi-maestro-flow instead of the retired PiDeck extension", () => {
 	assert.doesNotMatch(builtIns, /"pi-deck-plan-mode\.ts"/);
+	assert.doesNotMatch(builtIns, /pi-deck-maestro-control\.ts/);
 	assert.match(controller, /PIDECK_MAESTRO_PLAN_ENTER/);
 	assert.match(controller, /PIDECK_MAESTRO_PLAN_EXIT/);
 	assert.match(controller, /message: nextMode === "plan" \? PIDECK_MAESTRO_PLAN_ENTER : PIDECK_MAESTRO_PLAN_EXIT/);
@@ -29,12 +30,45 @@ test("Plan mode is sourced from pi-maestro-flow instead of the retired PiDeck ex
 	assert.doesNotMatch(readFileSync("src/renderer/src/composerBehavior.ts", "utf8"), /PI_DECK_PLAN_MODE_MARKER/);
 	assert.match(maestroControls, /PIDECK_MAESTRO_PLAN_ENTER/);
 	assert.match(maestroControls, /PIDECK_MAESTRO_PLAN_EXIT/);
-	assert.match(agentManager, /isPrivateMaestroPlanControl/);
+	assert.match(agentManager, /resolveMaestroPlanControlCommand/);
+	assert.match(agentManager, /maestroPlanCommand !== null/);
 	assert.match(agentManager, /if \(!isPrivateControl\)/);
-	assert.match(maestroPatch, /planToggleMode/);
-	assert.match(maestroPatch, /planExitMode/);
-	assert.match(maestroPatch, /event\.source !== "rpc"/);
-	assert.match(packageJson, /patch-pi-maestro-plan\.mjs/);
+	assert.match(maestroControls, /return "\/plan exit"/);
+	assert.match(builtIns, /"pi-deck-maestro-auto-approve\.ts"/);
+	assert.doesNotMatch(packageJson, /patch-pi-maestro-(?:plan|ssh)\.mjs/);
+});
+
+test("Maestro Plan controls translate to registered extension commands at the RPC boundary", () => {
+	const {
+		PIDECK_MAESTRO_PLAN_ENTER,
+		PIDECK_MAESTRO_PLAN_EXIT,
+		resolveMaestroPlanControlCommand,
+	} = loadTsCommonJs("src/shared/maestroControls.ts");
+	assert.equal(resolveMaestroPlanControlCommand(PIDECK_MAESTRO_PLAN_ENTER), "/plan");
+	assert.equal(resolveMaestroPlanControlCommand(`${PIDECK_MAESTRO_PLAN_ENTER}\n修改登录页`), "/plan 修改登录页");
+	assert.equal(resolveMaestroPlanControlCommand(PIDECK_MAESTRO_PLAN_EXIT), "/plan exit");
+	assert.equal(resolveMaestroPlanControlCommand("普通消息"), null);
+});
+
+test("PiDeck auto-plan execution uses a PiDeck-owned RPC custom UI adapter", () => {
+	const adapter = readFileSync("resources/extensions/pi-deck-maestro-auto-approve.ts", "utf8");
+	assert.doesNotMatch(controller, /PIDECK_MAESTRO_PLAN_AUTO/);
+	assert.doesNotMatch(composerComponents, /composerModePlanAuto/);
+	assert.doesNotMatch(adapter, /AUTO_MARKER/);
+	assert.match(adapter, /ui\.custom/);
+	assert.match(adapter, /ui\.select/);
+	assert.match(adapter, /Plan confirmation \/ 计划审批/);
+	assert.match(adapter, /action: "execute"/);
+	assert.match(adapter, /Continue discussion/);
+	assert.match(adapter, /Exit Plan mode/);
+	assert.match(adapter, /event\.toolName !== "plan-confirm"/);
+	assert.match(adapter, /event\.toolName === "plan-confirm"/);
+	assert.match(adapter, /pideck-plan-confirm/);
+	assert.match(adapter, /setWidget/);
+	assert.match(adapter, /sendUserMessage\("\/plan approve"/);
+	assert.doesNotMatch(adapter, /autoApproveNextCustom/);
+	assert.doesNotMatch(adapter, /registerTool/);
+	assert.doesNotMatch(agentManager, /PIDECK_MAESTRO_PLAN_AUTO_OFF/);
 });
 
 test("DSH mode picker retains Goal while Pi mode availability excludes it", () => {
@@ -72,10 +106,13 @@ test("goal/plan composer chrome uses an inset accent rail and an in-chip exit", 
 	assert.match(timelineCss, /\.composer-box\.goal-mode::before \{[\s\S]*?color-mix\(in srgb, var\(--color-accent\) 55%/);
 	assert.match(composerComponents, /composer-mode-cluster/);
 	assert.match(composerComponents, /composer-mode-exit/);
-	assert.match(composerComponents, /composer-maestro-mode-indicator[^"]*size-7/);
-	assert.match(composerComponents, /<ListChecks size=\{15\}/);
-	assert.match(composerComponents, /<Wrench size=\{15\}/);
-	assert.match(composerComponents, /title=\{`\$\{t\(isPlanMode/);
+	assert.doesNotMatch(composerComponents, /composer-maestro-mode-indicator/);
+	assert.doesNotMatch(composerComponents, /composerModeMaestroStatus/);
+	assert.doesNotMatch(composerComponents, /onChangeMaestroAutoApprove/);
+	assert.doesNotMatch(composerComponents, /composerModePlanAuto/);
+	assert.doesNotMatch(composerComponents, /composerModePlanStatus/);
+	assert.doesNotMatch(composerComponents, /composer-maestro-mode-indicator[\s\S]{0,180}<DropdownMenuContent/);
+	assert.doesNotMatch(composerComponents, /aria-label=\{t\("app\.composerModeMaestroStatus"\)\}[\s\S]{0,220}disabled=\{props\.disabled\}/);
 	assert.doesNotMatch(composerComponents, /composer-maestro-mode-indicator[\s\S]{0,500}<span/);
 	assert.match(composerComponents, /<X size=\{12\}/);
 	assert.doesNotMatch(composerComponents, /mode-cancel/);
