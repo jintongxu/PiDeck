@@ -267,12 +267,6 @@ export const SETTINGS_FIELD_ANCHORS: readonly SettingsFieldAnchor[] = [
 		labelKey: "settings.agentCountReminder",
 		keywords: ["会话数量提醒", "agent 数量", "数量提醒", "太多会话"],
 	},
-	{
-		tab: "notification",
-		slug: "notification-announcement",
-		labelKey: "settings.announcementNotification",
-		keywords: ["公告通知", "announcement", "官方公告"],
-	},
 
 	// ── 局域网 Web 服务 ───────────────────────────────────────────────
 	{

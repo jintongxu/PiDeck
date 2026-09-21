@@ -23,8 +23,6 @@ import { PetSystem, type PetSystemDeps } from "./pet";
 import { SoundAlertService } from "./sounds/SoundAlertService";
 import { registerSoundIpc } from "./ipc/soundIpc";
 import { registerSoundProtocol } from "./sounds/soundProtocol";
-import { AnnouncementService } from "./announcements/AnnouncementService";
-import { registerAnnouncementIpc } from "./ipc/announcementIpc";
 import { AutomationStore } from "./automation/AutomationStore";
 import { AutomationScheduler } from "./automation/AutomationScheduler";
 import { AutomationRunCoordinator } from "./automation/AutomationRunCoordinator";
@@ -471,8 +469,6 @@ let terminalManager: TerminalSessionManager;
 let petSystem: PetSystem | null = null;
 /** 声音提醒服务（完成/出错/等待输入提示音）；null = 未初始化 */
 let soundAlertService: SoundAlertService | null = null;
-/** 应用公告服务（无服务器拉取模式）；null = 未初始化 */
-let announcementService: AnnouncementService | null = null;
 /** 定时任务与自动化服务；null = 未初始化 */
 let automationStore: AutomationStore | null = null;
 let automationScheduler: AutomationScheduler | null = null;
@@ -4360,26 +4356,6 @@ app.whenReady().then(async () => {
 	quitCleanup.register("sound-alert", () => {
 		soundAlertService?.detach();
 		soundAlertService = null;
-	});
-
-	// 应用公告：无服务器拉取（仓库 announcements.json，jsDelivr → 内置镜像 → raw 兜底），
-	// 2h 周期 + 启动抖动；快照变化推给主窗口，已读集合持久化在 userData。
-	announcementService = new AnnouncementService({
-		userDataDir: app.getPath("userData"),
-		appVersion: app.getVersion(),
-		log: (domain, message, details) => void appLogger.info(domain, message, details),
-		onSnapshot: (state) => {
-			// 推送前判空 + isDestroyed：窗口销毁后 send 会抛
-			const win = mainWindow;
-			if (win && !win.isDestroyed()) win.webContents.send(ipcChannels.announcementChanged, state);
-		},
-	});
-	announcementService.start();
-	registerAnnouncementIpc(() => announcementService);
-	// 退出清理登记（before-quit 统一 runAll）：停定时器，避免退出阶段仍触发拉取
-	quitCleanup.register("announcement", () => {
-		announcementService?.stop();
-		announcementService = null;
 	});
 
 	// 启动后异步检查 RPC 超时时间，如果小于 600 秒则自动修正为 600 秒

@@ -28,7 +28,7 @@ type LoadState =
  * ## 渲染安全边界
  *
  * CHANGELOG 是**外部数据**（来自 atomgit/GitHub raw，且主进程已确认不是 HTML 壳）。
- * 正文一律经 MarkdownStream 渲染，与会话消息、公告详情同一套 streamdown sanitize
+ * 正文一律经 MarkdownStream 渲染，与会话消息同一套 streamdown sanitize
  * 管线；禁止绕过它直接塞 dangerouslySetInnerHTML。
  *
  * ## 降级策略

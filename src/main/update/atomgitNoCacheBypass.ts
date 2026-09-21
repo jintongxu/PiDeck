@@ -17,7 +17,7 @@
  * 用独立 partition 发请求，因此拦截器必须注册在同一个 partition session 上，
  * 注册到 defaultSession 会永远拦不到（0.7.5 曾因此漏修）。
  * `fromPartition` 同名幂等，此处拿到的与 updater 内部缓存的是同一实例。
- * api.atomgit.com（公告/扩展/探针）不在拦截前缀内，不受影响。
+ * api.atomgit.com 的扩展/探针请求不在拦截前缀内，不受影响。
  *
  * 注意：webRequest 监听注册后不可移除，本模块使用幂等注册（与 PetWindow CSP
  * 安装同一模式），防止重复调用累积监听。

@@ -14,7 +14,6 @@ import {
 import { RpcLogViewer } from "./RpcLogViewer";
 import { sessionRecordToSummary } from "../../atoms";
 import { hasPendingUpdateAtom, pendingAppUpdateAtom, pendingCatalogUpdateAtom, pendingPiUpdateAtom, updateStatusAtom } from "../../atoms/update-atoms";
-import { announcementNotificationEnabledAtom } from "../../atoms/announcement-atoms";
 import { useAtomValue } from "jotai";
 import { isManagerSessionSummary, worktreeFamilyProjects } from "../../sessionManagerModel";
 import { t } from "../../i18n";
@@ -35,7 +34,6 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "../ui-shadcn/tooltip";
 import { Tabs, TabsList, TabsTrigger } from "../motion/tabs";
 import { Dock, DockItem } from "../motion/dock";
 import { UpdateDotHint } from "./UpdateDotHint";
-import { AnnouncementCenter } from "./AnnouncementCenter";
 import { AutomationDockButton } from "../automation/AutomationDockButton";
 import { MorphingSearch, type MorphingSearchItem } from "../motion/morphing-search";
 import { parseSidebarNavTab } from "../../utils/sidebarNavTab";
@@ -162,7 +160,6 @@ export function SidebarContent(props: SidebarContentProps) {
   const hasPendingCatalogUpdate = useAtomValue(pendingCatalogUpdateAtom);
   const hasPendingUpdate = useAtomValue(hasPendingUpdateAtom);
   const updateStatus = useAtomValue(updateStatusAtom);
-  const announcementEnabled = useAtomValue(announcementNotificationEnabledAtom);
   // tooltip 清单条目：按「哪一类有更新」组装，让用户不用猜圆点指的是什么。
   const updateItems = [
     hasPendingAppUpdate && updateStatus?.app?.latestVersion
@@ -446,13 +443,10 @@ export function SidebarContent(props: SidebarContentProps) {
           />
         </section>
       </div>
-      {/* 底栏 dock（beUI Dock）：设置/公告/反馈/主题切换收进浮动卡片，铺满底栏宽度
-          （w-full + justify-between 让四个动作均匀分布，侧栏最小宽 208px 时也不溢出）。
-          DockItem 只提供尺寸与居中容器，按钮本体仍是 shadcn ghost；四入口 hover 提示
-          统一走 styled Tooltip（side="right"/delay 300），不用原生 title——原生 title
-          会与 Tooltip 双弹且样式割裂（回归见 sidebarBottomButtons.test.mjs）。
-          行容器带 relative：首次解释气泡挂在整行上（左缘铺满行宽），不能寄生在 32px
-          的 DockItem 内——否则 224px 气泡会溢出侧栏左缘被裁剪（回归见 updateDotHintAnchor）。 */}
+      {/* 底栏 dock（beUI Dock）：设置/反馈/主题切换收进浮动卡片，铺满底栏宽度
+          （w-full + justify-between 让动作均匀分布，侧栏最小宽 208px 时也不溢出）。
+          DockItem 只提供尺寸与居中容器，按钮本体仍是 shadcn ghost；hover 提示统一走
+          styled Tooltip（side="right"/delay 300），不用原生 title。 */}
       {!props.isLanWeb && (
         <div className="relative flex shrink-0 items-center px-2 pb-2 pt-1">
           {/* 首次解释气泡：圆点第一次出现时指向设置按钮（Material feature discovery），
@@ -486,13 +480,6 @@ export function SidebarContent(props: SidebarContentProps) {
                 {hasPendingUpdate && <span className="pointer-events-none absolute right-1 top-1 size-2 rounded-full bg-[var(--color-accent)]" aria-hidden="true" />}
               </div>
             </DockItem>
-            {/* 公告中心入口：未读红点在组件内部按 atom 派生（单一 owner）。
-                开关关闭时不挂载 DockItem，避免 AnnouncementCenter 返回 null 后留下空位。 */}
-            {announcementEnabled ? (
-              <DockItem>
-                <AnnouncementCenter />
-              </DockItem>
-            ) : null}
             <DockItem>
               {/* 官网入口：与历史 Dock 布局保持一致，始终用系统浏览器打开。 */}
               <Tooltip delayDuration={300}>
@@ -505,7 +492,7 @@ export function SidebarContent(props: SidebarContentProps) {
               </Tooltip>
             </DockItem>
             <DockItem>
-              {/* 反馈入口：与设置/公告统一 styled Tooltip（原生 title 移除，防双弹）；aria-label 保留读屏契约 */}
+              {/* 反馈入口：与设置统一 styled Tooltip（原生 title 移除，防双弹）；aria-label 保留读屏契约 */}
               <Tooltip delayDuration={300}>
                 <TooltipTrigger asChild>
                   <Button type="button" variant="ghost" className="size-full rounded-full text-muted-foreground hover:bg-muted hover:text-foreground" aria-label={t("feedback.title")} onClick={props.onOpenFeedback}><MessageSquare className="size-4" /></Button>

@@ -23,8 +23,8 @@ export interface DrawerProps {
    * PiDeck 扩展（beui 官方无此 prop）：透传到背板与面板的共同包装层。
    *
    * 背板与面板是同级的两个 fixed 兄弟节点，调用方需要一个能把「整张抽屉」
-   * 一次性标记出来的挂载点 —— 例如公告详情抽屉要挂 data-* 属性，让外层
-   * Radix Dialog 在 closest() 判定中识别「这次外部交互来自抽屉」，从而只关
+   * 一次性标记出来的挂载点，让外层 Radix Dialog 在 closest() 判定中识别
+   *「这次外部交互来自抽屉」，从而只关
    * 抽屉、不连带关掉列表弹窗。缺省不渲染包装层，保持官方 DOM 结构不变。
    */
   rootAttributes?: Record<string, string>;
