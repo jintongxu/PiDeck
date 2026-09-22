@@ -9,7 +9,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![Electron](https://img.shields.io/badge/Electron-38-47848f)
 ![React](https://img.shields.io/badge/React-19-61dafb)
-![Version](https://img.shields.io/badge/version-0.7.6-blue)
+![Version](https://img.shields.io/badge/version-0.7.10-blue)
 
 <!-- star-history:start -->
 <picture>
@@ -79,11 +79,13 @@
 
 ## 📋 Changelog
 
-> **Latest: v0.7.9** (2026-09-20)
+> **Latest: v0.7.10** (2026-09-22)
 
-### v0.7.9 Release Highlights
-- ✨ **Pi Plan mode is owned by pi-maestro-flow**
-- ✨ **Start Agent now syncs and prioritizes the session immediately**
+### v0.7.10 Release Highlights
+- 🚀 **Project ideas now flow from notes to implementation**
+- 🚀 **Upload project-idea images through PicGo**
+- ✨ **Maestro Plan approval resumes cleanly in PiDeck**
+- ✨ **Fork-specific announcements removed**
 
 [View Full Changelog →](CHANGELOG.md)
 

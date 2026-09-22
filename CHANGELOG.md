@@ -1,3 +1,13 @@
+## v0.7.10 - 2026-09-22
+
+### 🚀 New Features
+- **Project ideas now flow from notes to implementation** — Keep the original note intact while Pi produces a separate editable refinement with summary, problem, goal, scope, acceptance criteria, and open questions. After explicit confirmation, choose the implementation model and thinking level from one compact picker, then start work in a linked session; deleted implementation sessions no longer leave a stale “Continue” action.
+- **Upload project-idea images through PicGo** — Paste images into a project idea and PiDeck uploads them through the existing PicGo setup, inserting durable Markdown links instead of embedding large local payloads.
+
+### 🐛 Fixes
+- **Maestro Plan approval resumes cleanly in PiDeck** — A built-in bridge handles the approved-plan continuation without reviving PiDeck's retired private Plan state machine, keeping ownership with pi-maestro-flow.
+- **Fork-specific announcements removed** — Remove the announcement feed and its settings, storage, IPC, and renderer surface from this fork so it no longer fetches or displays upstream project announcements.
+
 ## v0.7.9 - 2026-09-20
 
 ### 🐛 Fixes

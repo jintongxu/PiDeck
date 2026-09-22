@@ -9,7 +9,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![Electron](https://img.shields.io/badge/Electron-38-47848f)
 ![React](https://img.shields.io/badge/React-19-61dafb)
-![Version](https://img.shields.io/badge/version-0.7.6-blue)
+![Version](https://img.shields.io/badge/version-0.7.10-blue)
 
 国内 AtomGit 托管：https://atomgit.com/ayuayue/PiDeck
 <!-- 预留 AtomGit G-Star 徽章位（替换占位链接后启用）
@@ -98,11 +98,13 @@
 
 ## 📋 更新日志
 
-> **最新版本 v0.7.9**（2026-09-20）
+> **最新版本 v0.7.10**（2026-09-22）
 
-### v0.7.9 更新亮点
-- ✨ **Pi 计划模式统一交给 pi-maestro-flow**
-- ✨ **启动 Agent 后会话立即同步并置顶**
+### v0.7.10 更新亮点
+- 🚀 **项目想法从随笔贯通到正式实现**
+- 🚀 **项目想法图片支持 PicGo 上传**
+- ✨ **Maestro Plan 审批后可顺畅回到 PiDeck 继续执行**
+- ✨ **移除分叉版项目公告**
 
 [查看完整更新日志 →](CHANGELOG.zh-CN.md)
 
