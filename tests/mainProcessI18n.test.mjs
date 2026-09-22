@@ -22,6 +22,14 @@ test("main-process copy resolves locale and interpolates stable product text", (
   assert.equal(mainProcessT("en-US", "tray.showWindow"), "Show window");
   assert.equal(mainProcessT("en-US", "mainNotification.aborted", { title: "Session" }), "Session stopped the current response");
   assert.equal(mainProcessT("zh-CN", "mainNotification.aborted", { title: "会话" }), "会话已中止当前响应");
+  assert.equal(
+    mainProcessT("zh-CN", "mainNotification.badGatewayRetrying", { title: "会话" }),
+    "会话 上游服务暂时不可用（HTTP 502），正在自动重试",
+  );
+  assert.equal(
+    mainProcessT("en-US", "mainNotification.badGateway", { title: "Session" }),
+    "Session upstream service is temporarily unavailable (HTTP 502); try again later",
+  );
   assert.equal(mainProcessT("en-US", "pet.switch"), "Switch pet");
   assert.equal(
     mainProcessT("en-US", "session.historyTitle", { project: "PiDeck" }),

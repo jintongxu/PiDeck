@@ -10,9 +10,18 @@ const {
   isDefaultAgentTitle,
   inferTitleFromMessages,
   looksLikePiSessionFileStem,
+  isBadGatewayError,
 } = loadTsCommonJs("src/main/pi/agentUtils.ts");
 
 const message = (role) => ({ role });
+
+test("isBadGatewayError recognizes HTTP 502 upstream responses without matching longer numbers", () => {
+  assert.equal(isBadGatewayError('502: {"message":"Upstream service temporarily unavailable","type":"upstream_error"}'), true);
+  assert.equal(isBadGatewayError("502 status code (no body)"), true);
+  assert.equal(isBadGatewayError("1502 status code"), false);
+  assert.equal(isBadGatewayError("503 status code"), false);
+  assert.equal(isBadGatewayError(undefined), false);
+});
 
 test("trimHistoryMessages default caps runtime cache at 12 turns (2026-11)", () => {
   // 15 轮输入 → 保留最近 12 轮（user 消息为轮起点）

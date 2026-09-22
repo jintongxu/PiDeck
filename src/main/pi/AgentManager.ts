@@ -129,6 +129,7 @@ import {
 	isDefaultAgentTitle,
 	looksLikePiSessionFileStem,
 	isAbortErrorMessage,
+	isBadGatewayError,
 	isProviderPromptRejectionError,
 	shouldReloadMessagesAfterCompaction,
 } from "./agentUtils";
@@ -5146,6 +5147,11 @@ export class AgentManager {
 						"running",
 					);
 				}
+				// Pi 会为 502 自动重试，但不会在最终失败前触发普通错误通知；
+				// 先通知一次，让用户知道上游暂时不可用，后续尝试按 agent 去重。
+				if (typeof errorMsg === "string" && isBadGatewayError(errorMsg)) {
+					this.notifyAgentError(agentId, errorMsg, true);
+				}
 				// 重试中保持 running，不能误置为 idle/error，否则宠物聚合状态会提前转 done/failed
 				if (runtime) runtime.tab.status = "running";
 			} else if (errorMsg) {
@@ -5156,7 +5162,7 @@ export class AgentManager {
 					this.notifyAgentAborted(agentId);
 				} else {
 					this.addDetailedErrorMessage(agentId, String(errorMsg));
-					this.notifyAgentError(agentId);
+					this.notifyAgentError(agentId, String(errorMsg));
 				}
 				// 策略拒绝是当前提示词失败，不是 Pi 进程失败：相同请求不应重试，
 				// 但只要进程仍活着，下一条经用户修改的消息应继续复用该 runtime。
@@ -5185,7 +5191,7 @@ export class AgentManager {
 					this.notifyAgentAborted(agentId);
 				} else {
 					this.addDetailedErrorMessage(agentId);
-					this.notifyAgentError(agentId);
+					this.notifyAgentError(agentId, topMsg?.errorMessage);
 				}
 				// 与上一分支同款 abort 例外：终止回合不把活进程标成终态。
 				if (runtime && !abortedTurn) runtime.tab.status = "error";
@@ -6799,9 +6805,10 @@ export class AgentManager {
 	/**
 	 * 请求失败时发送系统通知。错误详情保留在会话诊断卡中，通知只提示失败，
 	 * 避免把上游 URL、请求参数或其它敏感诊断信息直接暴露到系统通知中心。
-	 * 同一轮可能收到重复的 agent_end/settled 事件，因此按 agent 去重。
+	 * 同一轮可能收到重复的 agent_end/settled 事件，因此按 agent 去重；502 在自动重试
+	 * 分支也会进入这里，确保上游暂时不可用不会被重试机制静默吞掉。
 	 */
-	private notifyAgentError(agentId: string): void {
+	private notifyAgentError(agentId: string, errorMessage?: string, retrying = false): void {
 		try {
 			const settings = this.settingsStore.get();
 			if (!settings.enableNotifications) return;
@@ -6811,7 +6818,14 @@ export class AgentManager {
 			const runtime = this.agents.get(agentId);
 			const appName = app.getName();
 			const title = runtime?.tab.title || appName;
-			const body = this.translate("mainNotification.sessionError", { title });
+			const body = this.translate(
+				isBadGatewayError(errorMessage)
+					? retrying
+						? "mainNotification.badGatewayRetrying"
+						: "mainNotification.badGateway"
+					: "mainNotification.sessionError",
+				{ title },
+			);
 			const sessionId = resolveNotificationSessionId(
 				this.resolveSessionId ? () => this.resolveSessionId!(agentId) : undefined,
 				runtime?.tab.sessionId,

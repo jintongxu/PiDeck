@@ -22,6 +22,16 @@ export function isAbortErrorMessage(message: string): boolean {
 }
 
 /**
+ * 判断错误是否为 HTTP 502 Bad Gateway。
+ *
+ * 供应商可能把状态码包装成 JSON（例如 `502: {"type":"upstream_error"}`），
+ * 也可能只返回 `502 status code`；统一按独立数字匹配，避免误命中更长的数字。
+ */
+export function isBadGatewayError(message: string | undefined): boolean {
+	return typeof message === "string" && /\b502\b/i.test(message);
+}
+
+/**
  * 判断供应商是否拒绝了当前提示词（通常是内容/使用策略拦截）。
  *
  * 这类错误不是 Pi 进程故障：相同请求重试仍会被拒绝，但活着的进程可以继续
