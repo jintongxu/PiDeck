@@ -5,7 +5,7 @@
  * （图标 + 标题/正文 + 复制/关闭 + 操作按钮），kind 映射 error/warning/info/neutral 图标。
  *
  * Toaster 未挂载（App 尚未启动 / 渲染树崩溃）时回退到 DOM toast，
- * 保证全局错误处理仍能给用户可见反馈。
+ * 保证全局错误处理仍能给用户可见反馈；kind=error 的通知同时镜像到系统通知。
  */
 
 import { createElement } from "react";
@@ -91,6 +91,18 @@ export function setToasterReady(ready: boolean) {
  */
 function toasterMounted() {
 	return toasterReady;
+}
+
+/**
+ * 错误 toast 同步镜像到系统通知；调用必须是 best-effort，通知失败不能影响原有 toast。
+ * 只在 Electron preload 存在时执行，LAN Web/预览模式继续只显示应用内通知。
+ */
+function notifySystemError(message: string) {
+	try {
+		void window.piDesktop?.app.notifyError(message).catch(() => undefined);
+	} catch {
+		// 系统通知失败不应让错误处理链再抛出第二个异常。
+	}
 }
 
 function ensureFallbackHost() {
@@ -314,6 +326,7 @@ export function showNotice(
 	const resolvedDuration = duration ?? (kind === "error" || kind === "warning" ? 3000 : 1500);
 	const text = String(message ?? "").trim();
 	if (!text) return;
+	if (kind === "error") notifySystemError(text);
 	if (!toasterMounted()) {
 		return showFallbackNotice(text, resolvedDuration, kind, title, actions, id);
 	}

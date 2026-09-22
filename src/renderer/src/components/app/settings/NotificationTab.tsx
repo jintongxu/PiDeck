@@ -194,6 +194,7 @@ export const NotificationTab = memo(function NotificationTab(props: Notification
 				<SettingSwitchRow
 					anchor="notification-enable"
 					title={t("settings.enableNotifications")}
+					description={t("settings.enableNotificationsDesc")}
 					checked={draft.enableNotifications}
 					onChange={(checked) =>
 						updateDraft({ enableNotifications: checked })

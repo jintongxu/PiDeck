@@ -3,7 +3,7 @@
  * Phase 3.7: extracted from src/main/index.ts registerIpc().
  */
 
-import { app, dialog, ipcMain, shell } from "electron";
+import { app, dialog, ipcMain, Notification, shell } from "electron";
 import { ipcChannels } from "../../shared/ipc";
 import { UPDATE_REPO, UPDATE_REPO_OWNER } from "../update/releaseRepo";
 import { probeAllMirrors, type MirrorHealthResult } from "../update/mirrorHealth";
@@ -130,6 +130,22 @@ function isMcpConfigFile(value: unknown): value is McpConfigFile {
 	if (!("mcpServers" in value) || value.mcpServers === undefined) return true;
 	if (!isUnknownRecord(value.mcpServers)) return false;
 	return Object.values(value.mcpServers).every(isMcpServerDefinition);
+}
+
+const RENDERER_ERROR_NOTIFICATION_MAX_LENGTH = 240;
+const RENDERER_ERROR_NOTIFICATION_DEDUPE_WINDOW_MS = 5000;
+
+/**
+ * 把渲染层 toast 的错误压成适合系统通知的单行摘要；系统通知不应携带换行、控制符或超长堆栈。
+ */
+function normalizeRendererErrorNotification(message: string): string {
+	const normalized = message
+		.replace(/[\u0000-\u001F\u007F]+/g, " ")
+		.replace(/\s+/g, " ")
+		.trim();
+	return normalized.length > RENDERER_ERROR_NOTIFICATION_MAX_LENGTH
+		? `${normalized.slice(0, RENDERER_ERROR_NOTIFICATION_MAX_LENGTH - 1)}…`
+		: normalized;
 }
 
 export type SystemIpcDeps = {
@@ -1180,6 +1196,50 @@ export function registerSystemIpc(deps: SystemIpcDeps): void {
 		agentManager?.stopAll();
 		app.relaunch();
 		app.quit();
+	});
+
+	// 渲染层错误通知按正文短时去重：同一异常可能同时由 error boundary、promise rejection
+	// 或多个组件上报，系统通知只保留一条；右上角 toast 仍按各调用点正常显示。
+	const rendererErrorNotificationTimes = new Map<string, number>();
+	ipcMain.handle(ipcChannels.appNotifyError, (_event, rawMessage: unknown) => {
+		if (typeof rawMessage !== "string") throw new Error("invalid renderer error message");
+		const message = normalizeRendererErrorNotification(rawMessage);
+		if (!message) return;
+
+		const settings = settingsStore.get();
+		if (!settings.enableNotifications || !Notification.isSupported()) return;
+		const now = Date.now();
+		for (const [key, at] of rendererErrorNotificationTimes) {
+			if (now - at > RENDERER_ERROR_NOTIFICATION_DEDUPE_WINDOW_MS) {
+				rendererErrorNotificationTimes.delete(key);
+			}
+		}
+		const previousAt = rendererErrorNotificationTimes.get(message);
+		if (previousAt !== undefined && now - previousAt <= RENDERER_ERROR_NOTIFICATION_DEDUPE_WINDOW_MS) return;
+		rendererErrorNotificationTimes.set(message, now);
+		if (rendererErrorNotificationTimes.size > 1000) rendererErrorNotificationTimes.clear();
+
+		try {
+			const notification = new Notification({
+				title: app.getName(),
+				// 诊断正文可能包含上游 URL、请求参数或其它敏感信息；详情仍留在应用内 toast。
+				body: mainCopy("mainNotification.rendererError"),
+				silent: false,
+			});
+			notification.on("click", () => {
+				const win = getMainWindow();
+				if (!win || win.isDestroyed()) return;
+				if (win.isMinimized()) win.restore();
+				if (!win.isVisible()) win.show();
+				win.focus();
+			});
+			notification.on("failed", (_event, error) => {
+				void appLogger.warn("app", "Renderer error notification failed to show", { error: String(error) });
+			});
+			notification.show();
+		} catch (error) {
+			void appLogger.warn("app", "Renderer error notification failed", { error: String(error) });
+		}
 	});
 
 	// 与托盘「退出 PiDeck」同语义：先置 isQuitting，再 app.quit()。

@@ -3569,7 +3569,9 @@ export const enUS: Record<TranslationKey, string> = {
   "settings.detectEnvironment": "Check environment",
   "settings.enableDesktopProxy": "Enable desktop network proxy",
   "settings.enableNotifications":
-    "Send system notifications when agents finish responding",
+    "Send system notifications when agents finish responding or fail",
+  "settings.enableNotificationsDesc":
+    "Shown alongside the in-app error toast; turn off to keep errors in the app only",
   "settings.askNotification": "Ask question notifications",
   "settings.askNotificationDesc": "When an agent asks you a question, also send a system notification (default off; the in-app toast always shows)",
   "settings.agentCountReminder": "Active agent count reminder",

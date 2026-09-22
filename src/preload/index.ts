@@ -1359,6 +1359,9 @@ const api = {
 	},
 	app: {
 		info: () => ipcRenderer.invoke(ipcChannels.appInfo) as Promise<AppInfo>,
+		/** 将渲染层 error toast 镜像到系统通知；主进程按设置、平台能力与短时去重处理。 */
+		notifyError: (message: string) =>
+			ipcRenderer.invoke(ipcChannels.appNotifyError, message) as Promise<void>,
 		networkAddresses: () =>
 			ipcRenderer.invoke(ipcChannels.appNetworkAddresses) as Promise<WebNetworkAddress[]>,
 		preferredSystemLanguages: () =>

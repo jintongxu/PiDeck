@@ -937,6 +937,7 @@ export function createPreviewApi(): PiDesktopApi {
 				userDataDir: "C:/Users/preview/AppData/Roaming/pi-desktop",
 			}),
 			preferredSystemLanguages: async () => navigator.languages?.length ? [...navigator.languages] : [navigator.language],
+			notifyError: async () => undefined,
 			networkAddresses: async () => [{ address: "192.168.1.100", interfaceName: "Wi-Fi", cidr: "192.168.1.100/24", isPrivate: true }],
 			checkUpdate: async () => undefined,
 			onUpdateStatus: () => () => undefined,

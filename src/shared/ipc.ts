@@ -409,6 +409,8 @@ export const ipcChannels = {
 	/** 检查 npm 是否可用 */
 	piCheckNpm: "pi:check-npm",
 	appInfo: "app:info",
+	/** 渲染层错误 toast 的系统通知镜像；由主进程按设置与平台能力门控 */
+	appNotifyError: "app:notify-error",
 	/** 获取当前机器的非回环 IPv4 网卡，供局域网 Web 服务二维码使用 */
 	appNetworkAddresses: "app:network-addresses",
 	appPreferredSystemLanguages: "app:preferred-system-languages",
