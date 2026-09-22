@@ -100,3 +100,14 @@ pideck-host/
 resources/dsh-runner-node/node.exe
 resources/dsh-runner-node/node
 dist-runtime/dsh-runner-node/
+
+# Maestro workflow runtime state is machine-specific; keep only shareable knowledge.
+.workflow/*
+!.workflow/specs/
+!.workflow/specs/*.md
+!.workflow/knowhow/
+!.workflow/knowhow/*.md
+.workflow/specs/*
+!.workflow/specs/*.md
+.workflow/knowhow/*
+!.workflow/knowhow/*.md
