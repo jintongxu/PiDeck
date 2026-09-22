@@ -2,6 +2,19 @@
 export type ProjectIdeaStatus = "inbox" | "planned" | "doing" | "done";
 export type ProjectIdeaSourceKind = "message" | "selection";
 
+/** AI-generated, user-editable clarification of an informal idea. */
+export type ProjectIdeaRefinement = {
+	summary: string;
+	problem: string;
+	goal: string;
+	expectedOutcome: string;
+	scope: string[];
+	acceptanceCriteria: string[];
+	openQuestions: string[];
+	generatedAt: number;
+	confirmedAt?: number;
+};
+
 export type ProjectIdeaCapture = {
 	sessionId: string;
 	text: string;
@@ -14,6 +27,8 @@ export type ProjectIdea = {
 	projectId: string;
 	title: string;
 	body: string;
+	/** The latest AI clarification; raw body remains the source of truth for the original note. */
+	refinement?: ProjectIdeaRefinement;
 	status: ProjectIdeaStatus;
 	tags: string[];
 	linkedSessionIds: string[];
@@ -30,6 +45,7 @@ export type CreateProjectIdeaInput = {
 	projectId: string;
 	title: string;
 	body?: string;
+	refinement?: ProjectIdeaRefinement | null;
 	status?: ProjectIdeaStatus;
 	tags?: string[];
 	linkedSessionIds?: string[];
@@ -45,7 +61,9 @@ export type UpdateProjectIdeaInput = Partial<Pick<
 	| "status"
 	| "tags"
 	| "linkedSessionIds"
-	| "sourceSessionId"
-	| "sourceMessageId"
-	| "sourceKind"
->>;
+>> & {
+	refinement?: ProjectIdeaRefinement | null;
+	sourceSessionId?: string | null;
+	sourceMessageId?: string | null;
+	sourceKind?: ProjectIdeaSourceKind | null;
+};

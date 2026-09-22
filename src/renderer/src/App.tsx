@@ -300,6 +300,7 @@ export function App() {
   // 项目的 git worktree 列表：{ parentId -> WorktreeEntry[] }
   const [pendingAgents, setPendingAgents] = useState<PendingAgentTab[]>([]);
   const [activeProjectId, setActiveProjectId] = useState<string>();
+  const sessionRecordIds = useAtomValue(sessionRecordsAtom);
   const activeProjectIdRef = useRef<string | undefined>(activeProjectId);
   activeProjectIdRef.current = activeProjectId;
   const activeAgentId = useAtomValue(activeAgentIdAtom);
@@ -675,6 +676,8 @@ export function App() {
     gitCommitMessagePrompt: "请根据以下 git diff 生成一条中文 git commit message。\n\n变更描述：\n{diff}\n\nGitmoji 对应关系：\n✨ feat - 新功能\n🐛 fix - Bug 修复\n📚 docs - 文档更新\n💎 style - 代码格式\n♻️ refactor - 重构\n🧪 test - 测试\n🔧 chore - 构建/工具",
     gitCommitMessageProvider: "",
     gitCommitMessageModel: "",
+    projectIdeaRefinementProvider: "",
+    projectIdeaRefinementModel: "",
     gitExecutablePath: "",
     dshRunnerNodePath: "",
     closeToTray: true,
@@ -1824,8 +1827,12 @@ export function App() {
       .info()
       .then((info) => {
         setAppInfo(info);
-        // 与窗口标题一致：开发态功能分支时文档标题带分支名
-        document.title = info.devBranch ? `PiDeck · ${info.devBranch}` : "PiDeck";
+        // 与窗口标题一致：临时版和开发分支在任务栏/最小化状态下也保持可识别。
+        document.title = info.isTemporaryBuild
+          ? "PiDeck-Dev · 临时版"
+          : info.devBranch
+            ? `PiDeck · ${info.devBranch}`
+            : "PiDeck";
       })
       .catch(() => undefined);
     void api.imagegen.getConfig().then(setImageGenConfig).catch(() => undefined);
@@ -4515,6 +4522,11 @@ export function App() {
 
     {/* 定时任务与自动化管理中心全功能弹窗（模态呈现，不覆盖会话工作区） */}
     <ProjectIdeasModal
+      refinementModel={settings.projectIdeaRefinementProvider && settings.projectIdeaRefinementModel ? { provider: settings.projectIdeaRefinementProvider, modelId: settings.projectIdeaRefinementModel } : undefined}
+      currentSessionId={currentSessionId}
+      currentSessionProjectId={currentSession?.projectId}
+      currentSessionContext={activeMessages}
+      availableSessionIds={Object.keys(sessionRecordIds)}
       onContinue={(projectId, prompt) => {
         void createSessionDraftWithTab(projectId)
           .then((session) => {
@@ -4523,6 +4535,18 @@ export function App() {
           .catch((error: unknown) => {
             showToast(error instanceof Error ? error.message : String(error), 5000);
           });
+      }}
+      onExecute={async (projectId, prompt, model, thinkingLevel) => {
+        const targetSession = currentSessionId && currentSession?.projectId === projectId && !model && !thinkingLevel
+          ? currentSession
+          : await createSessionDraftWithTab(projectId, { ...(model ? { model } : {}), ...(thinkingLevel ? { thinkingLevel } : {}) });
+        if (!targetSession) return null;
+        if (!store.get(sessionRuntimeBySessionIdAtomFamily(targetSession.id))?.agentId) {
+          await api.sessions.activateRuntime(targetSession.id);
+        }
+        const delivered = await submitPromptSnapshot(targetSession.id, prompt);
+        if (delivered !== true) return null;
+        return targetSession.id;
       }}
     />
 

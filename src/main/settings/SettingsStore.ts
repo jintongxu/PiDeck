@@ -137,6 +137,8 @@ Gitmoji 对应关系：
   // 默认不指定模型，避免升级后在用户尚未配置 provider 时隐式调用错误模型。
   gitCommitMessageProvider: "",
   gitCommitMessageModel: "",
+  projectIdeaRefinementProvider: "",
+  projectIdeaRefinementModel: "",
   // 空串 = 自动解析（PATH 中的 git → 各平台已知安装位置）；用户可在 Git 设置页显式指定。
   gitExecutablePath: "",
   dshRunnerNodePath: "",

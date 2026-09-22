@@ -197,6 +197,8 @@ export type AppInfo = {
 	userDataDir: string;
 	/** 开发态 git 分支名（多 worktree 并行时区分窗口）；正式包/共享分支为空。 */
 	devBranch?: string;
+	/** 临时验证包标记：用于最小化/托盘等无法直接看到安装目录的场景。 */
+	isTemporaryBuild?: boolean;
 	/** pi CLI 版本（探测失败/未安装时缺省，UI 显示 —）；进程生命周期内缓存。 */
 	piVersion?: string;
 	/** 当前启用的 DSH 运行时版本（bundled manifest）；未启用/开发态缺省。 */

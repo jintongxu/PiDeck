@@ -961,6 +961,8 @@ export function ModelPicker(props: {
 	recentProviders?: string[];
 	/** 用户隐藏的供应商 key 列表（Pi 模型页眼睛开关）；Pi 后端按 provider 过滤，DSH 不生效。 */
 	hiddenProviders?: string[];
+	/** 选择器底部附加设置（如项目想法的推理强度）。 */
+	footer?: ReactNode;
 }) {
 	const currentModelKey = props.current?.provider && props.current?.modelId
 		? `${props.current.provider}/${props.current.modelId}`
@@ -1116,6 +1118,7 @@ export function ModelPicker(props: {
 					))}
 				</>
 			)}
+			{props.footer}
 		</CommandPickerDialog>
 	);
 }

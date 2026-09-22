@@ -1,13 +1,14 @@
 /**
  * dist:win:dev 包装脚本：构建并打包独立的 Dev 验证版安装包。
  *
- * 与正式版（phids）完全隔离，互不影响：
- * - productName: phidsDev → 安装目录 %LOCALAPPDATA%\Programs\phidsDev、快捷方式名独立
- * - appId: com.ayuayue.pi-desktop-dev → 通知中心归属（AppUserModelID）独立
- * - 配置目录: %APPDATA%\pi-desktop-dev → 与 dev 模式共用，复用现有项目/模型/会话配置
+ * 与正式版完全隔离，互不影响：
+ * - productName: PiDeck-Dev → 安装目录、快捷方式和窗口标题均带 Dev
+ * - appId: com.ayuayue.pi-desktop-dev → 通知中心归属独立
+ * - 构建标记: PIDECK_DEV_BUILD=1 → 运行时使用 %APPDATA%\pi-desktop-dev
+ * - 输出目录: release-dev → 不覆盖 release/ 中的正式产物
  *
- * 注意：dev 与 dev 构建版共享配置目录，同版本单实例锁（instance-locks/0.6.7.lock）互斥，
- * 运行时两者不能同时开启。
+ * 注意：dev 与 dev 构建版共享开发配置目录，因此二者仍按开发版单实例规则互斥；
+ * 但都不会抢占或打开正式版客户端。
  */
 const { execSync } = require("node:child_process");
 const path = require("node:path");
@@ -22,10 +23,15 @@ execSync("npm run build", {
 	env: { ...process.env, PIDECK_DEV_BUILD: "1" },
 });
 
-console.log(`\n[2/3] electron-builder --win nsis …`);
+console.log(`\n[2/3] electron-builder --win nsis → release-dev/ …`);
 execSync(
-	`npx electron-builder --win nsis --config.productName=phidsDev --config.appId=com.ayuayue.pi-desktop-dev`,
-	{ cwd: root, stdio: "inherit", shell: true },
+	"npx electron-builder --win nsis --config scripts/electron-builder-dev.cjs",
+	{
+		cwd: root,
+		stdio: "inherit",
+		shell: true,
+		env: { ...process.env, PIDECK_DEV_BUILD: "1" },
+	},
 );
 
-console.log(`\n[3/3] ✅ Dev 版打包完成！产物在 release/ 目录（phidsDev Setup *.exe）`);
+console.log(`\n[3/3] ✅ 临时 Dev 版打包完成！产物在 release-dev/ 目录（PiDeck-Dev Setup *.exe）`);

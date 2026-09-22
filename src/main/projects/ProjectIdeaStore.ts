@@ -16,6 +16,8 @@ const MAX_TAG_LENGTH = 40;
 const MAX_TAGS = 20;
 const MAX_LINKED_SESSIONS = 50;
 const MAX_SOURCE_ID_LENGTH = 160;
+const MAX_REFINEMENT_LIST_ITEMS = 20;
+const MAX_REFINEMENT_FIELD_LENGTH = 20_000;
 const STATUSES: readonly ProjectIdeaStatus[] = ["inbox", "planned", "doing", "done"];
 
 type PersistedProjectIdeas = {
@@ -51,6 +53,38 @@ function stringList(value: unknown, maxItems: number, maxLength: number): string
 	return result;
 }
 
+function normalizeRefinement(value: unknown): ProjectIdea["refinement"] {
+	if (!isRecord(value)) return undefined;
+	const summary = text(value.summary, MAX_REFINEMENT_FIELD_LENGTH);
+	if (!summary) return undefined;
+	const generatedAt = typeof value.generatedAt === "number" && Number.isFinite(value.generatedAt)
+		? value.generatedAt
+		: Date.now();
+	const confirmedAt = typeof value.confirmedAt === "number" && Number.isFinite(value.confirmedAt)
+		? value.confirmedAt
+		: undefined;
+	return {
+		summary,
+		problem: text(value.problem, MAX_REFINEMENT_FIELD_LENGTH),
+		goal: text(value.goal, MAX_REFINEMENT_FIELD_LENGTH),
+		expectedOutcome: text(value.expectedOutcome, MAX_REFINEMENT_FIELD_LENGTH),
+		scope: stringList(value.scope, MAX_REFINEMENT_LIST_ITEMS, MAX_REFINEMENT_FIELD_LENGTH),
+		acceptanceCriteria: stringList(value.acceptanceCriteria, MAX_REFINEMENT_LIST_ITEMS, MAX_REFINEMENT_FIELD_LENGTH),
+		openQuestions: stringList(value.openQuestions, MAX_REFINEMENT_LIST_ITEMS, MAX_REFINEMENT_FIELD_LENGTH),
+		generatedAt,
+		...(confirmedAt === undefined ? {} : { confirmedAt }),
+	};
+}
+
+function cloneRefinement(refinement: NonNullable<ProjectIdea["refinement"]>) {
+	return {
+		...refinement,
+		scope: [...refinement.scope],
+		acceptanceCriteria: [...refinement.acceptanceCriteria],
+		openQuestions: [...refinement.openQuestions],
+	};
+}
+
 function normalizeIdea(value: unknown): ProjectIdea | null {
 	if (!isRecord(value)) return null;
 	const candidate = value;
@@ -67,11 +101,13 @@ function normalizeIdea(value: unknown): ProjectIdea | null {
 	const completedAt = typeof candidate.completedAt === "number" && Number.isFinite(candidate.completedAt)
 		? candidate.completedAt
 		: undefined;
+	const refinement = normalizeRefinement(candidate.refinement);
 	return {
 		id,
 		projectId,
 		title,
 		body: typeof candidate.body === "string" ? candidate.body.slice(0, MAX_BODY_LENGTH) : "",
+		...(refinement ? { refinement } : {}),
 		status: isStatus(candidate.status) ? candidate.status : "inbox",
 		tags: stringList(candidate.tags, MAX_TAGS, MAX_TAG_LENGTH),
 		linkedSessionIds: stringList(candidate.linkedSessionIds, MAX_LINKED_SESSIONS, MAX_SOURCE_ID_LENGTH),
@@ -91,6 +127,7 @@ function normalizeIdea(value: unknown): ProjectIdea | null {
 function cloneIdea(idea: ProjectIdea): ProjectIdea {
 	return {
 		...idea,
+		...(idea.refinement ? { refinement: cloneRefinement(idea.refinement) } : {}),
 		tags: [...idea.tags],
 		linkedSessionIds: [...idea.linkedSessionIds],
 	};
@@ -160,11 +197,13 @@ export class ProjectIdeaStore {
 		const title = text(input.title, MAX_TITLE_LENGTH);
 		if (!input.projectId || !title) throw new Error("PROJECT_IDEA_TITLE_REQUIRED");
 		const status = isStatus(input.status) ? input.status : "inbox";
+		const refinement = normalizeRefinement(input.refinement);
 		const idea: ProjectIdea = {
 			id: randomUUID(),
 			projectId: input.projectId,
 			title,
 			body: typeof input.body === "string" ? input.body.slice(0, MAX_BODY_LENGTH) : "",
+			...(refinement ? { refinement } : {}),
 			status,
 			tags: stringList(input.tags, MAX_TAGS, MAX_TAG_LENGTH),
 			linkedSessionIds: stringList(input.linkedSessionIds, MAX_LINKED_SESSIONS, MAX_SOURCE_ID_LENGTH),
@@ -194,6 +233,11 @@ export class ProjectIdeaStore {
 			idea.title = title;
 		}
 		if (patch.body !== undefined) idea.body = typeof patch.body === "string" ? patch.body.slice(0, MAX_BODY_LENGTH) : "";
+		if (patch.refinement !== undefined) {
+			const refinement = normalizeRefinement(patch.refinement);
+			if (refinement) idea.refinement = refinement;
+			else delete idea.refinement;
+		}
 		if (patch.status !== undefined) {
 			if (!isStatus(patch.status)) throw new Error("PROJECT_IDEA_STATUS_INVALID");
 			idea.status = patch.status;
@@ -205,8 +249,11 @@ export class ProjectIdeaStore {
 		if (patch.sourceSessionId !== undefined) idea.sourceSessionId = text(patch.sourceSessionId, MAX_SOURCE_ID_LENGTH) || undefined;
 		if (patch.sourceMessageId !== undefined) idea.sourceMessageId = text(patch.sourceMessageId, MAX_SOURCE_ID_LENGTH) || undefined;
 		if (patch.sourceKind !== undefined) {
-			if (!isSourceKind(patch.sourceKind)) throw new Error("PROJECT_IDEA_SOURCE_KIND_INVALID");
-			idea.sourceKind = patch.sourceKind;
+			if (patch.sourceKind === null) delete idea.sourceKind;
+			else {
+				if (!isSourceKind(patch.sourceKind)) throw new Error("PROJECT_IDEA_SOURCE_KIND_INVALID");
+				idea.sourceKind = patch.sourceKind;
+			}
 		}
 		idea.updatedAt = now;
 		await this.persist();

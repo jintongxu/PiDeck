@@ -124,6 +124,8 @@ let previewSettings: AppSettings = {
 	gitCommitMessagePrompt: "",
 	gitCommitMessageProvider: "",
 	gitCommitMessageModel: "",
+	projectIdeaRefinementProvider: "",
+	projectIdeaRefinementModel: "",
 	gitExecutablePath: "",
 	dshRunnerNodePath: "",
 	closeToTray: true,

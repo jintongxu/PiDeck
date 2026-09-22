@@ -28,6 +28,21 @@ test("ProjectIdeaStore persists the lightweight workflow and cascades by project
 		assert.equal(idea.sourceMessageId, "message-1");
 		assert.equal(idea.sourceKind, "selection");
 
+		const refinement = {
+			summary: "Extract the adapter",
+			problem: "The provider logic is coupled",
+			goal: "Isolate provider behavior",
+			expectedOutcome: "Smaller modules",
+			scope: ["Move provider code"],
+			acceptanceCriteria: ["Typecheck passes"],
+			openQuestions: [],
+			generatedAt: 1_500,
+		};
+		const clarified = await store.update(idea.id, { refinement }, 1_500);
+		assert.equal(clarified.refinement.generatedAt, 1_500);
+		const cleared = await store.update(idea.id, { refinement: null }, 1_750);
+		assert.equal(cleared.refinement, undefined);
+
 		const planned = await store.update(idea.id, { status: "planned", title: "Extract adapter" }, 2_000);
 		assert.equal(planned.status, "planned");
 		assert.equal(planned.completedAt, undefined);

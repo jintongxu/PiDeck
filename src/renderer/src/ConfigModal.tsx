@@ -73,6 +73,7 @@ import { SecuritySection, type SecuritySectionHandle } from "./components/config
 import { DshLogo, PiLogo } from "./components/session/SessionSourceBadge";
 import { DshConfigTab, type DshConfigTabHandle } from "./config/DshConfigTab";
 import { t } from "./i18n";
+import { desktopApi } from "./desktopApi";
 import { CodeMirrorEditor } from "./components/app/CodeMirrorEditor";
 import { translateBuiltinPromptDescription } from "./composerBehavior";
 import type {
@@ -82,7 +83,7 @@ import type {
 	ModelsFile,
 	SettingsFile,
 } from "./config/configTypes";
-import type { ConfigFileDiagnostic, PiExtensionListResult, PiExtensionSummary, PiPromptTemplateListResult, PiPromptTemplateSummary, PiSkillListResult, PiSkillSummary, Project, ProjectResourceDiscoveryResult, ProjectResourceListResult } from "../../shared/types";
+import type { AvailableModel, ConfigFileDiagnostic, ModelListReport, PiExtensionListResult, PiExtensionSummary, PiPromptTemplateListResult, PiPromptTemplateSummary, PiSkillListResult, PiSkillSummary, Project, ProjectResourceDiscoveryResult, ProjectResourceListResult } from "../../shared/types";
 import {
 	globalPromptOverrideKey,
 	globalSkillOverrideKey,
@@ -106,6 +107,7 @@ import { mergeProviderDraft, type AddProviderDraft } from "./config/addProviderD
 import { useAtomValue } from "jotai";
 import { dshRuntimeStatusAtom } from "./atoms";
 import { dshUiVisibilityFor } from "../../shared/types/dshRuntime";
+import { ModelPicker } from "./components/session/ComposerComponents";
 
 const api: PiDesktopApi = (window as unknown as { piDesktop: PiDesktopApi })
 	.piDesktop;
@@ -310,6 +312,8 @@ export type ConfigPaneProps = {
 	focusConfigTab?: ConfigTab;
 	/** 深链：models 页要定位展开的供应商名。 */
 	focusProvider?: string;
+	projectIdeaRefinementModel?: { provider: string; modelId: string };
+	onProjectIdeaRefinementModelChange?: (model: { provider: string; modelId: string } | null) => void;
 	/** 深链：打开时落在的后端分页（DSH 配置 / Pi 管理）；缺省保持上次位置。 */
 	focusBackendPane?: "dsh" | "pi";
 	/**
@@ -329,7 +333,7 @@ export type ConfigPaneProps = {
  * 不包错误边界——宿主 SettingsModal 的 ErrorBoundary 已兜底整个窗口。
  */
 export const ConfigPane = forwardRef<ConfigPaneHandle, ConfigPaneProps>(
-	function ConfigPane({ onClose, onSaved, projectId, projectKind, projectName, projects, resourceOnly, focusConfigTab, focusProvider, focusBackendPane, onStateChange, onRequestClose }, ref) {
+	function ConfigPane({ onClose, onSaved, projectId, projectKind, projectName, projects, resourceOnly, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, onProjectIdeaRefinementModelChange, onStateChange, onRequestClose }, ref) {
 		return (
 			<ConfigModalContent
 				open
@@ -343,6 +347,8 @@ export const ConfigPane = forwardRef<ConfigPaneHandle, ConfigPaneProps>(
 				focusConfigTab={focusConfigTab}
 				focusProvider={focusProvider}
 				focusBackendPane={focusBackendPane}
+				projectIdeaRefinementModel={projectIdeaRefinementModel}
+				onProjectIdeaRefinementModelChange={onProjectIdeaRefinementModelChange}
 				embedded
 				paneRef={ref}
 				onPaneStateChange={onStateChange}
@@ -427,6 +433,9 @@ export function ConfigModal(props: ConfigModalProps) {
 type ConfigModalContentProps = ConfigModalProps & {
 	/** 资源管理器专用模式：只渲染技能/扩展/提示词，并固定到传入项目。 */
 	resourceOnly?: boolean;
+	/** 项目想法整理模型设置由配置管理 Models 页承载。 */
+	projectIdeaRefinementModel?: { provider: string; modelId: string };
+	onProjectIdeaRefinementModelChange?: (model: { provider: string; modelId: string } | null) => void;
 	/** 嵌入模式：不渲染 Dialog 外壳与标题栏按钮（宿主提供窗口），自身仍维护全部状态/保存/关闭确认逻辑 */
 	embedded?: boolean;
 	/** embedded 时暴露给宿主标题栏按钮的句柄 */
@@ -441,7 +450,7 @@ type ConfigModalContentProps = ConfigModalProps & {
 };
 
 function ConfigModalContent(props: ConfigModalContentProps) {
-	const { open, onClose, onSaved, projectId, projectKind, projectName, projects = [], resourceOnly = false, embedded, focusConfigTab, focusProvider, focusBackendPane } = props;
+	const { open, onClose, onSaved, projectId, projectKind, projectName, projects = [], resourceOnly = false, embedded, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, onProjectIdeaRefinementModelChange } = props;
 	/**
 	 * 资源作用域是派生值而非可切换 state：
 	 * - 主配置页固定 global（全局安装 + 用户 ~/.pi 自装 + PiDeck 内置）；项目级技能/扩展/提示词
@@ -466,6 +475,24 @@ function ConfigModalContent(props: ConfigModalContentProps) {
 	const [tab, setTab] = useState<ConfigTab>(focusConfigTab ?? lastTab?.tab ?? "models");
 	// 深链 provider：models 页展开该供应商卡片并滚动高亮（ModelsTab 消费）。
 	const [focusedProvider, setFocusedProvider] = useState<string | undefined>(focusProvider);
+	const [ideaModels, setIdeaModels] = useState<AvailableModel[]>([]);
+	const [ideaModelsReport, setIdeaModelsReport] = useState<ModelListReport | null>(null);
+	const [ideaModelsRefreshing, setIdeaModelsRefreshing] = useState(false);
+	const [ideaModelPickerOpen, setIdeaModelPickerOpen] = useState(false);
+	useEffect(() => {
+		if (!open || section !== "config" || tab !== "models") return;
+		void desktopApi.projects.listModelsReport(undefined, false).then((report) => {
+			setIdeaModels(report.models);
+			setIdeaModelsReport(report);
+		}).catch(() => undefined);
+	}, [open, section, tab]);
+	const refreshIdeaModels = useCallback(() => {
+		setIdeaModelsRefreshing(true);
+		void desktopApi.projects.listModelsReport(undefined, true).then((report) => {
+			setIdeaModels(report.models);
+			setIdeaModelsReport(report);
+		}).catch(() => undefined).finally(() => setIdeaModelsRefreshing(false));
+	}, []);
 	// 用量探针配置弹窗：由模型/认证/DSH 卡片触发（provider + backend 决定配置落盘位置）。
 	const [usageProbeDialog, setUsageProbeDialog] = useState<{
 		provider: string;
@@ -2621,6 +2648,25 @@ function ConfigModalContent(props: ConfigModalContentProps) {
 					{configDiagnosticBlock}
 					{!loading && (
 						<>
+						<div className="mb-4 rounded-lg border border-border-subtle bg-card p-4">
+							<div className="mb-1 text-sm font-medium">{t("settings.projectIdeaRefinementModel")}</div>
+							<p className="mb-3 text-xs text-muted-foreground">{t("settings.projectIdeaRefinementModelDesc")}</p>
+							<Button variant="outline" className="w-full justify-start font-mono text-xs" onClick={() => setIdeaModelPickerOpen(true)}>
+								{projectIdeaRefinementModel?.provider && projectIdeaRefinementModel.modelId
+									? `${projectIdeaRefinementModel.provider}/${projectIdeaRefinementModel.modelId}`
+									: t("settings.projectIdeaRefinementModelUnset")}
+							</Button>
+							{ideaModelPickerOpen && <ModelPicker
+								models={ideaModels}
+								report={ideaModelsReport}
+								refreshing={ideaModelsRefreshing}
+								onRefresh={refreshIdeaModels}
+								current={projectIdeaRefinementModel}
+								favoriteModels={[]}
+								onClose={() => setIdeaModelPickerOpen(false)}
+								onPick={(model) => { onProjectIdeaRefinementModelChange?.({ provider: model.provider, modelId: model.id }); setIdeaModelPickerOpen(false); }}
+							/>}
+						</div>
 						{/* TokenDance：确认后一键写入配置（pi models.json + DSH 模型目录），不内置注入 */}
 						<TokenDancePanel
 							configured={!!modelsData.providers[TOKENDANCE_PROVIDER]}

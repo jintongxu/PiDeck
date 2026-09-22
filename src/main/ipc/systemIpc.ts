@@ -837,6 +837,7 @@ export function registerSystemIpc(deps: SystemIpcDeps): void {
 				userDataDir: app.getPath("userData"),
 				homeDir: app.getPath("home"),
 				devBranch: devBranch,
+				isTemporaryBuild: process.env.PIDECK_DEV_BUILD === "1",
 				piVersion,
 				dshRuntimeVersion: resolveDshRuntimeVersion(deps.dshRuntimeManager),
 				piAiVersion: readBuiltinPiAiCatalogVersion(),

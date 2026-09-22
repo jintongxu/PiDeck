@@ -140,6 +140,10 @@ export type AppSettings = {
 	gitCommitMessageProvider: string;
 	/** Git 提交摘要使用的模型 ID；为空时生成前提示用户配置 */
 	gitCommitMessageModel: string;
+	/** 项目想法 AI 整理使用的 provider；为空时跟随 pi 默认模型 */
+	projectIdeaRefinementProvider: string;
+	/** 项目想法 AI 整理使用的模型 ID；为空时跟随 pi 默认模型 */
+	projectIdeaRefinementModel: string;
 	/**
 	 * Git 可执行文件绝对路径（如 C:\Program Files\Git\cmd\git.exe）。
 	 * 为空表示自动解析：优先 PATH 中的 git，回退到各平台已知安装位置。

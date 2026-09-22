@@ -76,6 +76,7 @@
     "check:xueprompts": "node scripts/check-xueprompts.mjs",
     "check:dsh-wire": "node scripts/check-dsh-wire-payloads.mjs",
     "pack:dev": "node scripts/pack-dev.js",
+    "dist:temp": "node scripts/dist-win-dev.js",
     "pack": "npm run build && electron-builder --dir",
     "dist": "npm run build && electron-builder",
     "dist:win": "node scripts/dist-win.js",

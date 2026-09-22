@@ -145,7 +145,7 @@ if (process.platform === "win32") {
 // 仅 packaged 应用注册：dev 模式跑的是 electron 二进制，注册会把协议关联劫持到 electron.exe，
 // 覆盖已安装正式版的关联；dev 模式下通知点击依赖 Electron 原生 click 事件聚焦即可。
 // 安装包内 electron-builder 的 protocols 配置也会在安装时写入注册表，此处是运行时兜底。
-if (app.isPackaged) {
+if (app.isPackaged && !isDevBuild) {
 	app.setAsDefaultProtocolClient("pideck");
 }
 
@@ -1360,7 +1360,7 @@ function setupTray() {
 	// iconPath 由 electron-vite 的 ?asset 后缀自动解析，打包后也能正确定位
 	const icon = nativeImage.createFromPath(iconPath);
 	tray = new Tray(icon.resize({ width: 16, height: 16 }));
-	tray.setToolTip("PiDeck");
+	tray.setToolTip(isDevBuild ? "PiDeck-Dev" : "PiDeck");
 	// C12：退出清理登记（before-quit 统一 runAll）
 	quitCleanup.register("tray", () => {
 		tray?.destroy();
@@ -1629,8 +1629,10 @@ async function createWindow() {
 		minWidth: 880,
 		minHeight: 640,
 		// 多 worktree 并行 dev：标题带分支名，任务栏/Alt-Tab 一眼区分窗口
-		title: isolateDevByGitBranch && !isSharedDevBranch(devGitBranch)
-			? `PiDeck · ${devGitBranch}`
+		title: isDevBuild
+			? isolateDevByGitBranch && !isSharedDevBranch(devGitBranch)
+				? `PiDeck-Dev · ${devGitBranch}`
+				: "PiDeck-Dev"
 			: "PiDeck",
 		icon: iconPath,
 		frame: windowOptions.frame,

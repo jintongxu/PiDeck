@@ -5,6 +5,7 @@ import { ipcChannels } from "../../shared/ipc";
 import type {
 	CreateProjectIdeaInput,
 	FeedbackProjectContext,
+	ProjectIdeaRefinement,
 	ProjectIdeaStatus,
 	UpdateProjectIdeaInput,
 } from "../../shared/types";
@@ -46,6 +47,40 @@ function parseStringArray(value: unknown, field: string): string[] | undefined {
 	return value.filter((item): item is string => typeof item === "string");
 }
 
+function parseRefinement(value: unknown): ProjectIdeaRefinement | null | undefined {
+	if (value === undefined) return undefined;
+	if (value === null) return null;
+	if (!isRecord(value) || typeof value.summary !== "string" || !value.summary.trim()) {
+		throw new Error("INVALID_PROJECT_IDEA_REFINEMENT");
+	}
+	const parseText = (field: string): string => {
+		const fieldValue = value[field];
+		if (typeof fieldValue !== "string") throw new Error("INVALID_PROJECT_IDEA_REFINEMENT");
+		return fieldValue;
+	};
+	const parseList = (field: string): string[] => {
+		const result = parseStringArray(value[field], field);
+		if (!result) throw new Error("INVALID_PROJECT_IDEA_REFINEMENT");
+		return result;
+	};
+	const generatedAt = value.generatedAt;
+	if (typeof generatedAt !== "number" || !Number.isFinite(generatedAt)) throw new Error("INVALID_PROJECT_IDEA_REFINEMENT");
+	if (value.confirmedAt !== undefined && (typeof value.confirmedAt !== "number" || !Number.isFinite(value.confirmedAt))) {
+		throw new Error("INVALID_PROJECT_IDEA_REFINEMENT");
+	}
+	return {
+		summary: value.summary,
+		problem: parseText("problem"),
+		goal: parseText("goal"),
+		expectedOutcome: parseText("expectedOutcome"),
+		scope: parseList("scope"),
+		acceptanceCriteria: parseList("acceptanceCriteria"),
+		openQuestions: parseList("openQuestions"),
+		generatedAt,
+		...(value.confirmedAt === undefined ? {} : { confirmedAt: value.confirmedAt }),
+	};
+}
+
 function parseCreateProjectIdea(value: unknown): CreateProjectIdeaInput {
 	if (!isRecord(value) || typeof value.projectId !== "string" || typeof value.title !== "string") {
 		throw new Error("INVALID_PROJECT_IDEA");
@@ -59,6 +94,7 @@ function parseCreateProjectIdea(value: unknown): CreateProjectIdeaInput {
 		projectId: value.projectId,
 		title: value.title,
 		body: value.body === undefined ? undefined : typeof value.body === "string" ? value.body : (() => { throw new Error("INVALID_PROJECT_IDEA_BODY"); })(),
+		refinement: parseRefinement(value.refinement),
 		status: value.status,
 		tags: parseStringArray(value.tags, "tags"),
 		linkedSessionIds: parseStringArray(value.linkedSessionIds, "linked_session_ids"),
@@ -79,6 +115,7 @@ function parseUpdateProjectIdea(value: unknown): UpdateProjectIdeaInput {
 		if (typeof value.body !== "string") throw new Error("INVALID_PROJECT_IDEA_BODY");
 		patch.body = value.body;
 	}
+	if ("refinement" in value) patch.refinement = parseRefinement(value.refinement);
 	if ("status" in value) {
 		if (!isProjectIdeaStatus(value.status)) throw new Error("PROJECT_IDEA_STATUS_INVALID");
 		patch.status = value.status;
@@ -86,16 +123,15 @@ function parseUpdateProjectIdea(value: unknown): UpdateProjectIdeaInput {
 	if ("tags" in value) patch.tags = parseStringArray(value.tags, "tags");
 	if ("linkedSessionIds" in value) patch.linkedSessionIds = parseStringArray(value.linkedSessionIds, "linked_session_ids");
 	if ("sourceSessionId" in value) {
-		if (typeof value.sourceSessionId !== "string") throw new Error("INVALID_PROJECT_IDEA_SOURCE_SESSION");
+		if (value.sourceSessionId !== null && typeof value.sourceSessionId !== "string") throw new Error("INVALID_PROJECT_IDEA_SOURCE_SESSION");
 		patch.sourceSessionId = value.sourceSessionId;
 	}
 	if ("sourceMessageId" in value) {
-		if (typeof value.sourceMessageId !== "string") throw new Error("INVALID_PROJECT_IDEA_SOURCE_MESSAGE");
+		if (value.sourceMessageId !== null && typeof value.sourceMessageId !== "string") throw new Error("INVALID_PROJECT_IDEA_SOURCE_MESSAGE");
 		patch.sourceMessageId = value.sourceMessageId;
-		if (!("sourceSessionId" in value)) throw new Error("PROJECT_IDEA_SOURCE_SESSION_REQUIRED");
 	}
 	if ("sourceKind" in value) {
-		if (!isProjectIdeaSourceKind(value.sourceKind)) throw new Error("PROJECT_IDEA_SOURCE_KIND_INVALID");
+		if (value.sourceKind !== null && !isProjectIdeaSourceKind(value.sourceKind)) throw new Error("PROJECT_IDEA_SOURCE_KIND_INVALID");
 		patch.sourceKind = value.sourceKind;
 	}
 	return patch;
@@ -290,7 +326,22 @@ export function registerProjectsIpc({
 		if (!existing) throw new Error("PROJECT_IDEA_NOT_FOUND");
 		if (existing.projectId !== ownerProjectId) throw new Error("PROJECT_IDEA_PROJECT_MISMATCH");
 		const parsedPatch = parseUpdateProjectIdea(patch);
-		const sourceSessionId = parsedPatch.sourceSessionId ?? existing.sourceSessionId;
+		const sourceSessionWasCleared = "sourceSessionId" in parsedPatch && parsedPatch.sourceSessionId === null;
+		const sourceSessionId = sourceSessionWasCleared
+			? undefined
+			: "sourceSessionId" in parsedPatch
+				? parsedPatch.sourceSessionId ?? undefined
+				: existing.sourceSessionId;
+		const sourceMessageId = sourceSessionWasCleared
+			? undefined
+			: "sourceMessageId" in parsedPatch
+				? parsedPatch.sourceMessageId ?? undefined
+				: existing.sourceMessageId;
+		if (sourceMessageId && !sourceSessionId) throw new Error("PROJECT_IDEA_SOURCE_SESSION_REQUIRED");
+		if (!sourceMessageId && (sourceSessionWasCleared || ("sourceMessageId" in parsedPatch && parsedPatch.sourceMessageId === null))) {
+			parsedPatch.sourceMessageId = null;
+			parsedPatch.sourceKind = null;
+		}
 		assertSourceSessionProject(sourceSessionId, ownerProjectId);
 		return projectIdeaStore.update(id, parsedPatch);
 	});
