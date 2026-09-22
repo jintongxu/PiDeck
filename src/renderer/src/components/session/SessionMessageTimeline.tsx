@@ -70,8 +70,6 @@ type UserBubbleProps = ComponentProps<typeof UserBubble>;
 
 /** 一轮结束后、用户无操作的自动收起等待时间。 */
 const TURN_SETTLE_IDLE_COLLAPSE_MS = 1500;
-/** 折叠高度动画基本结束后再做「拉到中上方」定位，避免用折叠前的高度计算目标。 */
-const TURN_SETTLE_SCROLL_DELAY_MS = 320;
 
 // 失败/重试 toast 去重必须放模块级：分屏多栏、切走再切回都会重挂 effect。
 // 重试签名尤其不能放组件 ref——旧实现 lastRetryToastRef 在 sessionId 变化时被清空，
@@ -278,10 +276,8 @@ export function SessionMessageTimeline(props: SessionMessageTimelineProps) {
   const lastSessionIdRef = useRef(sessionId);
   const prevDisplayRunsIdsRef = useRef<string[] | undefined>(undefined);
   const topFreshTimersRef = useRef<Map<string, number>>(new Map());
-  // 最新轮结束后的「阅读停顿 → 布局稳定 → 最终回答定位」流水线：
-  // 定时器只由状态边界取消（会话切换/新一轮/离开跟随），不监听任何输入事件。
+  // 最新轮结束后的「阅读停顿 → 执行过程自动收起」流水线：仅由状态边界取消。
   const turnSettleIdleTimerRef = useRef<number | undefined>(undefined);
-  const turnSettleScrollTimerRef = useRef<number | undefined>(undefined);
   /** 已排定流水线的 run id：同 run 重复 arm 直接复用，避免双调度。 */
   const turnSettleIdleLastRunRef = useRef<string | undefined>(undefined);
   /** 已发出过 autoCollapseTick 的 run id（跨切走保留）：切回补挂 arm 的幂等标记——
@@ -326,10 +322,6 @@ export function SessionMessageTimeline(props: SessionMessageTimelineProps) {
     if (turnSettleIdleTimerRef.current !== undefined) {
       window.clearTimeout(turnSettleIdleTimerRef.current);
       turnSettleIdleTimerRef.current = undefined;
-    }
-    if (turnSettleScrollTimerRef.current !== undefined) {
-      window.clearTimeout(turnSettleScrollTimerRef.current);
-      turnSettleScrollTimerRef.current = undefined;
     }
     turnSettleIdleLastRunRef.current = undefined;
     latestRunIdRef.current = undefined;
@@ -547,8 +539,8 @@ export function SessionMessageTimeline(props: SessionMessageTimelineProps) {
   }, [displayRuns]);
 
   // ── 最新轮结束后的 1.5s idle 自动收起 ──
-  // 用户动鼠标/滚轮/键盘会取消；仅仍在跟底时安排。真正收起由 TurnRow 的
-  // useTurnExecution 完成，收完后回调这里，把本轮起始消息拉到视口中上方。
+  // 仅仍在跟底时安排。真正收起由 TurnRow 的 useTurnExecution 完成；
+  // 这条状态流水线不会改变时间线滚动位置。
   const wasRuntimeBusyRef = useRef(isRuntimeBusy);
 
   useEffect(() => {
@@ -557,25 +549,7 @@ export function SessionMessageTimeline(props: SessionMessageTimelineProps) {
       latestRun?.kind === "agent-run" ? latestRun.id : undefined;
   }, [displayRuns, lastAgentRunIndex]);
 
-  const scrollFinalAnswerToUpperMiddle = controller.scrollFinalAnswerToUpperMiddle;
-  // 布局稳定窗口：折叠动画（Collapsible 高度变化）基本结束后再读取最终位置。
-  // 定时器不需要被输入事件取消——scrollFinalAnswerToUpperMiddle 会按触发时的
-  // autoScroll/ownerKey/几何守卫决定跳过，输入不参与取消（2026-09 状态驱动）。
-  const scheduleFinalAnswerSettle = useCallback(
-    (runId: string) => {
-      if (turnSettleScrollTimerRef.current !== undefined) {
-        window.clearTimeout(turnSettleScrollTimerRef.current);
-        turnSettleScrollTimerRef.current = undefined;
-      }
-      turnSettleScrollTimerRef.current = window.setTimeout(() => {
-        turnSettleScrollTimerRef.current = undefined;
-        scrollFinalAnswerToUpperMiddle(runId);
-      }, TURN_SETTLE_SCROLL_DELAY_MS);
-    },
-    [scrollFinalAnswerToUpperMiddle],
-  );
-  // 统一流水线：1.5s 阅读停顿 → 折叠执行过程（若仍展开）→ 布局稳定后定位。
-  // 定位不依赖「是否真的发生折叠」；同 run 已在途时复用，避免双调度。
+  // 最新轮结束后的阅读停顿只负责发出自动收起信号，不再改变时间线滚动位置。
   const armSettledReposition = useCallback(
     (runId: string | undefined) => {
       if (!runId) return;
@@ -592,14 +566,12 @@ export function SessionMessageTimeline(props: SessionMessageTimelineProps) {
       }
       turnSettleIdleTimerRef.current = window.setTimeout(() => {
         turnSettleIdleTimerRef.current = undefined;
-        // tick 已发出：该 run 的自动收起/定位已完成一次；切回时不再重复 arm
-        //（否则用户手动重新展开的轮次会被再次收起并清 memory）。
+        // tick 已发出：该 run 的自动收起已完成一次；切回时不再重复 arm。
         settleTickConsumedRunRef.current = runId;
         setLatestTurnAutoCollapseTick((tick) => tick + 1);
-        scheduleFinalAnswerSettle(runId);
       }, TURN_SETTLE_IDLE_COLLAPSE_MS);
     },
-    [scheduleFinalAnswerSettle],
+    [],
   );
 
   useEffect(() => {
@@ -611,67 +583,32 @@ export function SessionMessageTimeline(props: SessionMessageTimelineProps) {
         window.clearTimeout(turnSettleIdleTimerRef.current);
         turnSettleIdleTimerRef.current = undefined;
       }
-      if (turnSettleScrollTimerRef.current !== undefined) {
-        window.clearTimeout(turnSettleScrollTimerRef.current);
-        turnSettleScrollTimerRef.current = undefined;
-      }
       turnSettleIdleLastRunRef.current = undefined;
     };
 
-    if (isRuntimeBusy) {
-      // 新一轮开始（busy 边沿）：若在途 settle 定位动画（系统态移动视口），
-      // 取消并恢复跟随贴底——否则动画飞行中发送新消息，视口永久停在旧 run 的
-      // 30% 锚点，新 run 不跟随且自身 settle 也不 arm（对抗审查 F1）。
-      // 用户正在读历史（无在途动画）则不打扰。
-      controller.cancelSettledRepositionForNewRun();
-      clearIdle();
-      return;
-    }
-    if (!controller.autoScroll) {
+    if (isRuntimeBusy || !controller.autoScroll) {
       clearIdle();
       return;
     }
     // 只处理「运行中 → 停转」边沿；历史会话挂载/切回由下方补齐 effect 处理。
     if (!wasBusy) return;
 
-    // 最新轮结束且仍在跟随：arm 1.5s 阅读停顿流水线。
-    // 不再监听任何全局输入事件——鼠标移动/键盘/其他面板滚动与本轮是否结束无关,
-    // 不得参与取消（2026-09 收敛为状态驱动）。
+    // 最新轮结束且仍在跟随：只安排执行过程自动收起，不抢占阅读位置。
     armSettledReposition(latestRunIdRef.current);
 
     return clearIdle;
-  }, [
-    controller.autoScroll,
-    controller.cancelSettledRepositionForNewRun,
-    isRuntimeBusy,
-    sessionId,
-    armSettledReposition,
-  ]);
-
-  // 跟随状态变化（回底/下滚重锁）会作废在途的 settle 布局定时：不能让刚回底的
-  // 视口在 320ms 后又被定位拉到 30% 高度。定位动画开始后 autoScroll 恒为 false，
-  // 不会误清自身已触发的定时器；挂载首帧的 autoScroll true 不会清掉尚未排定的定时器。
-  useEffect(() => {
-    if (turnSettleScrollTimerRef.current !== undefined) {
-      window.clearTimeout(turnSettleScrollTimerRef.current);
-      turnSettleScrollTimerRef.current = undefined;
-    }
-  }, [controller.autoScroll]);
+  }, [controller.autoScroll, isRuntimeBusy, armSettledReposition]);
 
   // 最新轮已结束但重新出现在视口（切会话切回 / 历史会话打开）：不经过 busy 边沿，
-  // 若该会话仍停在最新尾部（跟随），按同一流水线补齐定位。effect 依赖不含
-  // controller.autoScroll：回底（autoScroll false→true）不重跑本 effect，避免
-  // 「刚点回底又被拉去 30%」；守卫只在触发瞬间读一次快照，过期由函数内最新
-  // autoScrollRef 再拦截一次。
+  // 若该会话仍停在最新尾部（跟随），补齐同一自动收起信号；整个过程不写入滚动位置。
   const latestSettledRunId =
     latestAgentRunId !== undefined && !isRuntimeBusy ? latestAgentRunId : undefined;
   useEffect(() => {
     if (!latestSettledRunId || !controller.autoScroll) return;
-    // 幂等：该 run 的 tick 已消费过（自动收起/定位已完成）不再重复 arm——
-    // 否则切回时会把用户手动重新展开的最新轮再收起并清 memory（P2-②）。
+    // 幂等：该 run 的 tick 已消费过，不再重复安排自动收起。
     if (settleTickConsumedRunRef.current === latestSettledRunId) return;
     armSettledReposition(latestSettledRunId);
-  }, [latestSettledRunId, armSettledReposition, sessionId]);
+  }, [latestSettledRunId, armSettledReposition, controller.autoScroll]);
   const turnWindowActive = shouldWindowTimelineTurns(
     countAgentRunItems(reconciledRuns),
     turnWindowTurns,

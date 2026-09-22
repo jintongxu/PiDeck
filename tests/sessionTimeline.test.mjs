@@ -32,13 +32,17 @@ function compileModule(filePath, imports = {}) {
   return module.exports;
 }
 
+const historyScrollConstants = compileModule(
+  "src/renderer/src/hooks/timeline/historyScrollConstants.ts",
+);
+
 function loadTimelineHelpers() {
   return compileModule("src/renderer/src/hooks/useSessionTimelineController.ts", {
     react: {},
     jotai: { atom: (value) => ({ _mockInit: value }) },
     "jotai/utils": {},
     "../atoms": {}, "../lib/pinTurnScroll": { animateScrollTop: () => () => undefined, pinScrollDurationMs: () => 320 },
-    "../desktopApi": {},    "./timeline/autoExpandThreshold": { TURN_WINDOW_AUTO_EXPAND_THRESHOLD: 120, resolveAutoExpandThreshold: (h) => Math.max(120, Math.round(h * 0.4)) }, "./timeline/scrollHistoryPolicy": {},    "../components/session/timeline/turnRenderWindow": {
+    "../desktopApi": {},    "./timeline/autoExpandThreshold": { TURN_WINDOW_AUTO_EXPAND_THRESHOLD: 120, resolveAutoExpandThreshold: (h) => Math.max(120, Math.round(h * 0.4)) }, "./timeline/scrollHistoryPolicy": {},    "./timeline/historyScrollConstants": historyScrollConstants,    "../components/session/timeline/turnRenderWindow": {
       TIMELINE_MOUNTED_TURN_LIMIT: 3,
       TIMELINE_SCROLLED_TURN_LIMIT: 3,
       TIMELINE_WINDOW_EXPAND_STEP: 3,
@@ -283,7 +287,10 @@ test("load-more compensation is skipped at the very top so prepended content sta
   // 2026-02 回归：视口在顶部（≤8px 阈值）时 prepend/展开不补偿 scrollTop——
   // 容器 overflow-anchor:none，插入内容不会自动调整滚动位置，补偿会把新内容推出视口上方，
   // 表现为「点击加载更多/显示更早无反馈」。中部才按高度差补偿保持视口内容不动。
-  const { resolveTimelineTopCompensation } = loadTimelineHelpers();
+  const { HISTORY_AUTO_LOAD_THRESHOLD, resolveTimelineTopCompensation } = loadTimelineHelpers();
+  assert.match(source, /historyScrollConstants/);
+  assert.equal(historyScrollConstants.HISTORY_AUTO_LOAD_THRESHOLD, 8);
+  assert.equal(HISTORY_AUTO_LOAD_THRESHOLD, historyScrollConstants.HISTORY_AUTO_LOAD_THRESHOLD);
   assert.equal(resolveTimelineTopCompensation(0, 600), null);
   assert.equal(resolveTimelineTopCompensation(8, 600), null);
   assert.equal(resolveTimelineTopCompensation(240, 600), 840);
