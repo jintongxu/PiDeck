@@ -4538,13 +4538,30 @@ export function App() {
             showToast(error instanceof Error ? error.message : String(error), 5000);
           });
       }}
-      onExecute={async (projectId, prompt, model, thinkingLevel) => {
-        const targetSession = currentSessionId && currentSession?.projectId === projectId && !model && !thinkingLevel
+      onExecute={async (projectId, prompt, model, thinkingLevel, sessionTitle) => {
+        const reuseCurrentSession = Boolean(
+          currentSessionId &&
+          currentSession?.projectId === projectId &&
+          !model &&
+          !thinkingLevel,
+        );
+        const targetSession = reuseCurrentSession
           ? currentSession
           : await createSessionDraftWithTab(projectId, { ...(model ? { model } : {}), ...(thinkingLevel ? { thinkingLevel } : {}) });
         if (!targetSession) return null;
+
         if (!store.get(sessionRuntimeBySessionIdAtomFamily(targetSession.id))?.agentId) {
           await api.sessions.activateRuntime(targetSession.id);
+        }
+        // 激活后走 updateRecord：后者会通过 runtime 的 set_session_name
+        // 持久化到会话文件，并让自动标题扩展尊重本次命名。
+        if (!reuseCurrentSession && sessionTitle?.trim()) {
+          try {
+            const renamed = await api.sessions.updateRecord(targetSession.id, { title: sessionTitle });
+            upsertSession(renamed);
+          } catch {
+            // 标题是非关键旁路；失败时保留创建时的候选名并继续实现。
+          }
         }
         const delivered = await submitPromptSnapshot(targetSession.id, prompt);
         if (delivered !== true) return null;

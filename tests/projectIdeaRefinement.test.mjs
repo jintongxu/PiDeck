@@ -4,6 +4,7 @@ import { loadTsCommonJs } from "./helpers/loadTsCommonJs.mjs";
 
 const {
   buildProjectIdeaRefinementPrompt,
+  buildProjectIdeaSessionTitle,
   formatProjectIdeaForExecution,
   parseProjectIdeaRefinement,
 } = loadTsCommonJs("src/renderer/src/utils/projectIdeaRefinement.ts");
@@ -25,6 +26,19 @@ test("parseProjectIdeaRefinement accepts plain and fenced JSON", () => {
 
 test("parseProjectIdeaRefinement rejects responses without a summary", () => {
   assert.throws(() => parseProjectIdeaRefinement(JSON.stringify({ goal: "missing summary" })), /PROJECT_IDEA_REFINEMENT_RESPONSE_INVALID/);
+});
+
+test("builds a bounded session title from the confirmed AI summary", () => {
+  assert.equal(
+    buildProjectIdeaSessionTitle({
+      title: "原始标题",
+      refinement: { summary: "目标摘要：整理关联会话命名", scope: [], acceptanceCriteria: [], openQuestions: [] },
+    }),
+    "整理关联会话命名",
+  );
+  assert.equal(buildProjectIdeaSessionTitle({ title: "仅有标题", refinement: undefined }), "仅有标题");
+  assert.equal(buildProjectIdeaSessionTitle({ title: "", refinement: undefined }), "");
+  assert.ok(buildProjectIdeaSessionTitle({ title: "x".repeat(120), refinement: undefined }).length <= 80);
 });
 
 test("prompts keep refinement separate from execution", () => {

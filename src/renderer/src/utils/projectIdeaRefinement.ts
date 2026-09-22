@@ -65,6 +65,30 @@ export function buildProjectIdeaRefinementPrompt(
 	].join("\n\n");
 }
 
+const PROJECT_IDEA_SESSION_TITLE_MAX_LENGTH = 80;
+
+/**
+ * 从已确认的 AI 整理稿生成关联会话的候选名称。
+ * 整理稿的 summary 是项目想法流程已经生成并由用户确认的 AI 摘要；
+ * 没有正文时仍可仅凭标题完成整理，因此这里只在 summary 缺失时回退到标题。
+ */
+export function buildProjectIdeaSessionTitle(
+	idea: Pick<ProjectIdea, "title" | "refinement">,
+): string {
+	const source = idea.refinement?.summary.trim() || idea.title.trim();
+	const firstLine = source.split(/\r?\n/, 1)[0]?.trim() ?? "";
+	const normalized = firstLine
+		.replace(/^(?:目标摘要|摘要|标题|Title)\s*[:：-]\s*/i, "")
+		.replace(/^#+\s*/, "")
+		.replace(/[ \\t]+/g, " ")
+		.trim();
+	if (!normalized) return "";
+	const characters = Array.from(normalized);
+	return characters.length <= PROJECT_IDEA_SESSION_TITLE_MAX_LENGTH
+		? normalized
+		: `${characters.slice(0, PROJECT_IDEA_SESSION_TITLE_MAX_LENGTH - 1).join("").trimEnd()}…`;
+}
+
 export function formatProjectIdeaForExecution(idea: Pick<ProjectIdea, "title" | "body" | "refinement">): string {
 	const refinement = idea.refinement;
 	const sections = [

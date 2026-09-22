@@ -39,7 +39,11 @@ import {
 	DropdownMenuTrigger,
 } from "../ui-shadcn/dropdown-menu";
 import { useProjectIdeaRefinement } from "../../hooks/useProjectIdeaRefinement";
-import { buildProjectIdeaRefinementPrompt, formatProjectIdeaForExecution } from "../../utils/projectIdeaRefinement";
+import {
+	buildProjectIdeaRefinementPrompt,
+	buildProjectIdeaSessionTitle,
+	formatProjectIdeaForExecution,
+} from "../../utils/projectIdeaRefinement";
 import { hasLiveLatestLinkedSession } from "../../utils/projectIdeaSessionLinks";
 
 const STATUSES: readonly ProjectIdeaStatus[] = ["inbox", "planned", "doing", "done"];
@@ -72,7 +76,13 @@ function cloneRefinement(refinement: ProjectIdeaRefinement | undefined): Project
 /** Project-scoped lightweight idea inbox. Persistence stays behind the preload API. */
 export function ProjectIdeasModal({ onContinue, onExecute, refinementModel, refinementThinkingLevel, currentSessionId, currentSessionProjectId, currentSessionContext = [], availableSessionIds = [] }: {
 	onContinue?: (projectId: string, prompt: string) => void;
-	onExecute?: (projectId: string, prompt: string, model?: { provider: string; modelId: string }, thinkingLevel?: string) => Promise<string | null>;
+	onExecute?: (
+		projectId: string,
+		prompt: string,
+		model?: { provider: string; modelId: string },
+		thinkingLevel?: string,
+		sessionTitle?: string,
+	) => Promise<string | null>;
 	refinementModel?: { provider: string; modelId: string };
 	refinementThinkingLevel?: string;
 	currentSessionId?: string;
@@ -366,7 +376,10 @@ export function ProjectIdeasModal({ onContinue, onExecute, refinementModel, refi
 				title: snapshot.title,
 				body: snapshot.body,
 				refinement: snapshot.refinement,
-			}), implementationModel, implementationThinkingLevel);
+			}), implementationModel, implementationThinkingLevel, buildProjectIdeaSessionTitle({
+				title: snapshot.title,
+				refinement: snapshot.refinement,
+			}));
 			if (!targetSessionId) return;
 			const stillCurrent = selectedIdRef.current === snapshot.ideaId
 				&& refinementTargetKeyRef.current === snapshot.targetKey
