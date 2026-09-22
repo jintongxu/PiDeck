@@ -3306,6 +3306,8 @@ export const enUS: Record<TranslationKey, string> = {
   "settings.projectIdeaRefinementModel": "Project idea clarification model",
   "settings.projectIdeaRefinementModelDesc": "Choose the model used to turn rough notes into structured project ideas; leave empty to follow pi defaults.",
   "settings.projectIdeaRefinementModelUnset": "Use pi default model",
+  "settings.projectIdeaRefinementThinkingLevel": "AI clarification reasoning effort",
+  "settings.projectIdeaRefinementThinkingLevelDefault": "Use model default",
   "settings.gitExecutable": "Git executable",
   "settings.gitExecutableDesc": "Absolute path to the git binary. Leave empty for auto-detect: PATH git first, then common install locations. All Git operations (worktrees and checkpoints included) use this path.",
   "settings.gitExecutablePlaceholder": "Leave empty to auto-detect",

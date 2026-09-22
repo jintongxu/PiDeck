@@ -698,7 +698,9 @@ function SettingsModalContent(props: SettingsModalProps) {
 							focusProvider={configFocus?.provider}
 							focusBackendPane={configFocus?.backendPane}
 							projectIdeaRefinementModel={draftSettings.projectIdeaRefinementProvider && draftSettings.projectIdeaRefinementModel ? { provider: draftSettings.projectIdeaRefinementProvider, modelId: draftSettings.projectIdeaRefinementModel } : undefined}
-							onProjectIdeaRefinementModelChange={(model) => updateDraft(model ? { projectIdeaRefinementProvider: model.provider, projectIdeaRefinementModel: model.modelId } : { projectIdeaRefinementProvider: "", projectIdeaRefinementModel: "" })}
+							projectIdeaRefinementThinkingLevel={draftSettings.projectIdeaRefinementThinkingLevel}
+							onProjectIdeaRefinementModelChange={(model) => updateDraft(model ? { projectIdeaRefinementProvider: model.provider, projectIdeaRefinementModel: model.modelId } : { projectIdeaRefinementProvider: "", projectIdeaRefinementModel: "", projectIdeaRefinementThinkingLevel: "" })}
+							onProjectIdeaRefinementThinkingLevelChange={(level) => updateDraft({ projectIdeaRefinementThinkingLevel: level })}
 							onStateChange={handleConfigPaneStateChange}
 							// 嵌套弹层（用量查询「让 AI 帮我查」）整窗关闭走统一关闭确认，
 							// 不直连 onClose 裸关闭——系统设置/配置管理草稿都不能被静默丢弃。

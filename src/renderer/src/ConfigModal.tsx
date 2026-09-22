@@ -108,6 +108,14 @@ import { useAtomValue } from "jotai";
 import { dshRuntimeStatusAtom } from "./atoms";
 import { dshUiVisibilityFor } from "../../shared/types/dshRuntime";
 import { ModelPicker } from "./components/session/ComposerComponents";
+import { resolveThinkingPickerLevels } from "./components/session/sessionPickerOptions";
+import {
+	Select,
+	SelectContent,
+	SelectItem,
+	SelectTrigger,
+	SelectValue,
+} from "./components/ui-shadcn/select";
 
 const api: PiDesktopApi = (window as unknown as { piDesktop: PiDesktopApi })
 	.piDesktop;
@@ -313,7 +321,9 @@ export type ConfigPaneProps = {
 	/** 深链：models 页要定位展开的供应商名。 */
 	focusProvider?: string;
 	projectIdeaRefinementModel?: { provider: string; modelId: string };
+	projectIdeaRefinementThinkingLevel?: string;
 	onProjectIdeaRefinementModelChange?: (model: { provider: string; modelId: string } | null) => void;
+	onProjectIdeaRefinementThinkingLevelChange?: (level: string) => void;
 	/** 深链：打开时落在的后端分页（DSH 配置 / Pi 管理）；缺省保持上次位置。 */
 	focusBackendPane?: "dsh" | "pi";
 	/**
@@ -333,7 +343,7 @@ export type ConfigPaneProps = {
  * 不包错误边界——宿主 SettingsModal 的 ErrorBoundary 已兜底整个窗口。
  */
 export const ConfigPane = forwardRef<ConfigPaneHandle, ConfigPaneProps>(
-	function ConfigPane({ onClose, onSaved, projectId, projectKind, projectName, projects, resourceOnly, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, onProjectIdeaRefinementModelChange, onStateChange, onRequestClose }, ref) {
+	function ConfigPane({ onClose, onSaved, projectId, projectKind, projectName, projects, resourceOnly, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, projectIdeaRefinementThinkingLevel, onProjectIdeaRefinementModelChange, onProjectIdeaRefinementThinkingLevelChange, onStateChange, onRequestClose }, ref) {
 		return (
 			<ConfigModalContent
 				open
@@ -348,7 +358,9 @@ export const ConfigPane = forwardRef<ConfigPaneHandle, ConfigPaneProps>(
 				focusProvider={focusProvider}
 				focusBackendPane={focusBackendPane}
 				projectIdeaRefinementModel={projectIdeaRefinementModel}
+				projectIdeaRefinementThinkingLevel={projectIdeaRefinementThinkingLevel}
 				onProjectIdeaRefinementModelChange={onProjectIdeaRefinementModelChange}
+				onProjectIdeaRefinementThinkingLevelChange={onProjectIdeaRefinementThinkingLevelChange}
 				embedded
 				paneRef={ref}
 				onPaneStateChange={onStateChange}
@@ -435,7 +447,9 @@ type ConfigModalContentProps = ConfigModalProps & {
 	resourceOnly?: boolean;
 	/** 项目想法整理模型设置由配置管理 Models 页承载。 */
 	projectIdeaRefinementModel?: { provider: string; modelId: string };
+	projectIdeaRefinementThinkingLevel?: string;
 	onProjectIdeaRefinementModelChange?: (model: { provider: string; modelId: string } | null) => void;
+	onProjectIdeaRefinementThinkingLevelChange?: (level: string) => void;
 	/** 嵌入模式：不渲染 Dialog 外壳与标题栏按钮（宿主提供窗口），自身仍维护全部状态/保存/关闭确认逻辑 */
 	embedded?: boolean;
 	/** embedded 时暴露给宿主标题栏按钮的句柄 */
@@ -450,7 +464,7 @@ type ConfigModalContentProps = ConfigModalProps & {
 };
 
 function ConfigModalContent(props: ConfigModalContentProps) {
-	const { open, onClose, onSaved, projectId, projectKind, projectName, projects = [], resourceOnly = false, embedded, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, onProjectIdeaRefinementModelChange } = props;
+	const { open, onClose, onSaved, projectId, projectKind, projectName, projects = [], resourceOnly = false, embedded, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, projectIdeaRefinementThinkingLevel = "", onProjectIdeaRefinementModelChange, onProjectIdeaRefinementThinkingLevelChange } = props;
 	/**
 	 * 资源作用域是派生值而非可切换 state：
 	 * - 主配置页固定 global（全局安装 + 用户 ~/.pi 自装 + PiDeck 内置）；项目级技能/扩展/提示词
@@ -479,6 +493,11 @@ function ConfigModalContent(props: ConfigModalContentProps) {
 	const [ideaModelsReport, setIdeaModelsReport] = useState<ModelListReport | null>(null);
 	const [ideaModelsRefreshing, setIdeaModelsRefreshing] = useState(false);
 	const [ideaModelPickerOpen, setIdeaModelPickerOpen] = useState(false);
+	const selectedIdeaModel = ideaModels.find((model) => model.provider === projectIdeaRefinementModel?.provider && model.id === projectIdeaRefinementModel.modelId);
+	const ideaThinkingLevels = resolveThinkingPickerLevels({
+		backend: "pi",
+		cachedPiLevels: selectedIdeaModel?.thinkingLevels,
+	});
 	useEffect(() => {
 		if (!open || section !== "config" || tab !== "models") return;
 		void desktopApi.projects.listModelsReport(undefined, false).then((report) => {
@@ -2656,6 +2675,19 @@ function ConfigModalContent(props: ConfigModalContentProps) {
 									? `${projectIdeaRefinementModel.provider}/${projectIdeaRefinementModel.modelId}`
 									: t("settings.projectIdeaRefinementModelUnset")}
 							</Button>
+							<div className="mt-3 grid gap-1.5">
+								<label className="text-xs font-medium" htmlFor="project-idea-refinement-thinking-level">{t("settings.projectIdeaRefinementThinkingLevel")}</label>
+								<Select
+									value={projectIdeaRefinementThinkingLevel || "__model_default__"}
+									onValueChange={(value) => onProjectIdeaRefinementThinkingLevelChange?.(value === "__model_default__" ? "" : value)}
+								>
+									<SelectTrigger id="project-idea-refinement-thinking-level" className="h-8 text-xs"><SelectValue /></SelectTrigger>
+									<SelectContent>
+										<SelectItem value="__model_default__" className="text-xs">{t("settings.projectIdeaRefinementThinkingLevelDefault")}</SelectItem>
+										{ideaThinkingLevels.map((level) => <SelectItem key={level.value} value={level.value} className="text-xs">{level.labelKey ? t(level.labelKey) : (level.label ?? level.value)}</SelectItem>)}
+									</SelectContent>
+								</Select>
+							</div>
 							{ideaModelPickerOpen && <ModelPicker
 								models={ideaModels}
 								report={ideaModelsReport}
@@ -2664,7 +2696,11 @@ function ConfigModalContent(props: ConfigModalContentProps) {
 								current={projectIdeaRefinementModel}
 								favoriteModels={[]}
 								onClose={() => setIdeaModelPickerOpen(false)}
-								onPick={(model) => { onProjectIdeaRefinementModelChange?.({ provider: model.provider, modelId: model.id }); setIdeaModelPickerOpen(false); }}
+								onPick={(model) => {
+									onProjectIdeaRefinementModelChange?.({ provider: model.provider, modelId: model.id });
+									if (projectIdeaRefinementThinkingLevel && model.thinkingLevels && !model.thinkingLevels.includes(projectIdeaRefinementThinkingLevel)) onProjectIdeaRefinementThinkingLevelChange?.("");
+									setIdeaModelPickerOpen(false);
+								}}
 							/>}
 						</div>
 						{/* TokenDance：确认后一键写入配置（pi models.json + DSH 模型目录），不内置注入 */}

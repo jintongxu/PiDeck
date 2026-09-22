@@ -152,6 +152,7 @@ const FIELD_CATALOG: readonly FieldCatalogEntry[] = [
 	{ field: "gitCommitMessageModel", tab: "git", itemKey: "settings.gitCommitMessageModel" },
 	{ field: "projectIdeaRefinementProvider", tab: "common", itemKey: "settings.projectIdeaRefinementModel" },
 	{ field: "projectIdeaRefinementModel", tab: "common", itemKey: "settings.projectIdeaRefinementModel" },
+	{ field: "projectIdeaRefinementThinkingLevel", tab: "common", itemKey: "settings.projectIdeaRefinementModel" },
 	{ field: "favoriteModels", tab: "git", itemKey: "settings.gitCommitMessageModel" },
 	{ field: "gitCommitMessagePrompt", tab: "git", itemKey: "settings.gitCommitMessagePrompt" },
 	{ field: "developerDiagnostics", tab: "dev", itemKey: "settings.developerDiagnostics" },

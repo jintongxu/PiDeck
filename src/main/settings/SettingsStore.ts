@@ -18,6 +18,7 @@ import { sanitizeShortcutOverrides } from "../../shared/shortcuts";
 import { normalizeThemeSchedule } from "../../shared/themeSchedule";
 import { getAppLogger } from "../logging/sharedLogger";
 import { setConfiguredGitPath } from "../git/gitExecutable";
+import { normalizeProjectIdeaRefinementThinkingLevel } from "../../shared/projectIdeaRefinement";
 
 /** 桌面端 settings.json（userData），与 pi agent settings 分离 */
 function desktopSettingsPath() {
@@ -139,6 +140,7 @@ Gitmoji 对应关系：
   gitCommitMessageModel: "",
   projectIdeaRefinementProvider: "",
   projectIdeaRefinementModel: "",
+  projectIdeaRefinementThinkingLevel: "",
   // 空串 = 自动解析（PATH 中的 git → 各平台已知安装位置）；用户可在 Git 设置页显式指定。
   gitExecutablePath: "",
   dshRunnerNodePath: "",
@@ -346,6 +348,7 @@ export class SettingsStore {
       // 快捷键覆盖来自旧 settings.json 时可能是脏值（未知 id / 非法 accelerator）；
       // 统一清洗，坏条目回落平台默认，避免主进程匹配读到无效键。
       this.settings.shortcuts = sanitizeShortcutOverrides(parsed.shortcuts, process.platform);
+      this.settings.projectIdeaRefinementThinkingLevel = normalizeProjectIdeaRefinementThinkingLevel(parsed.projectIdeaRefinementThinkingLevel);
     } catch {
       this.settings = { ...defaultSettings };
     }
@@ -419,6 +422,9 @@ export class SettingsStore {
     // IPC 入参不可信：自动标题开关只接受布尔值，非法值保持原有设置。
     if ("autoSessionTitle" in safePatch && typeof safePatch.autoSessionTitle !== "boolean") {
       delete safePatch.autoSessionTitle;
+    }
+    if ("projectIdeaRefinementThinkingLevel" in safePatch) {
+      safePatch.projectIdeaRefinementThinkingLevel = normalizeProjectIdeaRefinementThinkingLevel(safePatch.projectIdeaRefinementThinkingLevel);
     }
     // 全局快捷键覆盖来自渲染层，入参不可信：只保留已知 id + 合法 accelerator 的条目。
     if ("shortcuts" in safePatch) {

@@ -88,6 +88,7 @@ export function useProjectIdeaRefinement() {
 		prompt: string;
 		targetKey: string;
 		model?: { provider: string; modelId: string };
+		thinkingLevel?: string;
 	}): Promise<boolean> => {
 		const requestId = requestRef.current + 1;
 		requestRef.current = requestId;
@@ -103,6 +104,7 @@ export function useProjectIdeaRefinement() {
 				title: "Project idea refinement",
 				backend,
 				...(input.model ? { model: input.model } : {}),
+				...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {}),
 			});
 			createdSessionId = session.id;
 			if (!mountedRef.current || requestRef.current !== requestId) {

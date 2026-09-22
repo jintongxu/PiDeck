@@ -532,6 +532,8 @@ export class AgentManager {
 	private readonly notifiedAskAgents = new Set<string>();
 	/** 已发送 abort 系统通知的 agent；同一轮 abort/迟到事件只通知一次。 */
 	private readonly notifiedAbortAgents = new Set<string>();
+	/** 已发送错误系统通知的 agent；同一轮错误/迟到事件只通知一次。 */
+	private readonly notifiedErrorAgents = new Set<string>();
 	/** 待处理的项目信任确认请求。key 为 requestId，用于在 Agent 启动前等待用户的信任决策。 */
 	private readonly pendingTrustRequests = new Map<string, { resolve: (choice: ProjectTrustChoice) => void }>();
 	private wslEnvironment: WslEnvironment | null = null;
@@ -3578,6 +3580,7 @@ export class AgentManager {
 		this.lastPerfByAgent.delete(agentId);
 		this.notifiedAskAgents.delete(agentId);
 		this.notifiedAbortAgents.delete(agentId);
+		this.notifiedErrorAgents.delete(agentId);
 		this.abortedDuringAsk.delete(agentId);
 		this.pendingAbortEscalations.delete(agentId);
 		this.lastAbortAtByAgent.delete(agentId);
@@ -4928,6 +4931,7 @@ export class AgentManager {
 			this.pendingAbortEscalations.delete(agentId);
 			this.notifiedAskAgents.delete(agentId);
 			this.notifiedAbortAgents.delete(agentId);
+			this.notifiedErrorAgents.delete(agentId);
 			this.openAgentStream(agentId);
 			this.setAgentTurnActive(agentId, true);
 			// rewind 回合计数：每轮 run 递增一次，供文件自动打点标记 turnIndex。
@@ -5152,6 +5156,7 @@ export class AgentManager {
 					this.notifyAgentAborted(agentId);
 				} else {
 					this.addDetailedErrorMessage(agentId, String(errorMsg));
+					this.notifyAgentError(agentId);
 				}
 				// 策略拒绝是当前提示词失败，不是 Pi 进程失败：相同请求不应重试，
 				// 但只要进程仍活着，下一条经用户修改的消息应继续复用该 runtime。
@@ -5180,6 +5185,7 @@ export class AgentManager {
 					this.notifyAgentAborted(agentId);
 				} else {
 					this.addDetailedErrorMessage(agentId);
+					this.notifyAgentError(agentId);
 				}
 				// 与上一分支同款 abort 例外：终止回合不把活进程标成终态。
 				if (runtime && !abortedTurn) runtime.tab.status = "error";
@@ -6787,6 +6793,44 @@ export class AgentManager {
 			notification.show();
 		} catch {
 			// Notification failure must not affect abort settlement.
+		}
+	}
+
+	/**
+	 * 请求失败时发送系统通知。错误详情保留在会话诊断卡中，通知只提示失败，
+	 * 避免把上游 URL、请求参数或其它敏感诊断信息直接暴露到系统通知中心。
+	 * 同一轮可能收到重复的 agent_end/settled 事件，因此按 agent 去重。
+	 */
+	private notifyAgentError(agentId: string): void {
+		try {
+			const settings = this.settingsStore.get();
+			if (!settings.enableNotifications) return;
+			if (!Notification.isSupported()) return;
+			if (this.notifiedErrorAgents.has(agentId)) return;
+			this.notifiedErrorAgents.add(agentId);
+			const runtime = this.agents.get(agentId);
+			const appName = app.getName();
+			const title = runtime?.tab.title || appName;
+			const body = this.translate("mainNotification.sessionError", { title });
+			const sessionId = resolveNotificationSessionId(
+				this.resolveSessionId ? () => this.resolveSessionId!(agentId) : undefined,
+				runtime?.tab.sessionId,
+			);
+			const notification = new Notification({
+				title: appName,
+				body,
+				silent: false,
+				toastXml: this.buildToastXml(appName, body, sessionId),
+			});
+			notification.on("click", () => {
+				this.focusMainWindowForSession(sessionId);
+			});
+			notification.on("failed", (_event, error) => {
+				void this.appLogger?.warn("agent", "Error notification failed to show", { agentId, error: String(error) });
+			});
+			notification.show();
+		} catch {
+			// 通知失败不影响错误状态收敛；诊断卡和 appLogger 仍保留错误详情。
 		}
 	}
 

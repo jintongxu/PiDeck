@@ -3279,6 +3279,8 @@ export const zhCN = {
   "settings.projectIdeaRefinementModel": "项目想法 AI 整理模型",
   "settings.projectIdeaRefinementModelDesc": "选择用于把随笔整理成结构化项目想法的模型；留空则跟随 pi 默认模型。",
   "settings.projectIdeaRefinementModelUnset": "跟随 pi 默认模型",
+  "settings.projectIdeaRefinementThinkingLevel": "AI 整理推理强度",
+  "settings.projectIdeaRefinementThinkingLevelDefault": "使用模型默认强度",
   "settings.gitExecutable": "Git 可执行文件",
   "settings.gitExecutableDesc": "指定 git 二进制绝对路径。留空则自动解析：优先 PATH 中的 git，其次常见安装位置。所有 Git 操作（含 worktree 与提交快照）都会使用该路径。",
   "settings.gitExecutablePlaceholder": "留空自动检测",

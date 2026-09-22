@@ -678,6 +678,7 @@ export function App() {
     gitCommitMessageModel: "",
     projectIdeaRefinementProvider: "",
     projectIdeaRefinementModel: "",
+    projectIdeaRefinementThinkingLevel: "",
     gitExecutablePath: "",
     dshRunnerNodePath: "",
     closeToTray: true,
@@ -4523,6 +4524,7 @@ export function App() {
     {/* 定时任务与自动化管理中心全功能弹窗（模态呈现，不覆盖会话工作区） */}
     <ProjectIdeasModal
       refinementModel={settings.projectIdeaRefinementProvider && settings.projectIdeaRefinementModel ? { provider: settings.projectIdeaRefinementProvider, modelId: settings.projectIdeaRefinementModel } : undefined}
+      refinementThinkingLevel={settings.projectIdeaRefinementThinkingLevel || undefined}
       currentSessionId={currentSessionId}
       currentSessionProjectId={currentSession?.projectId}
       currentSessionContext={activeMessages}

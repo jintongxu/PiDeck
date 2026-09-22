@@ -70,10 +70,11 @@ function cloneRefinement(refinement: ProjectIdeaRefinement | undefined): Project
 }
 
 /** Project-scoped lightweight idea inbox. Persistence stays behind the preload API. */
-export function ProjectIdeasModal({ onContinue, onExecute, refinementModel, currentSessionId, currentSessionProjectId, currentSessionContext = [], availableSessionIds = [] }: {
+export function ProjectIdeasModal({ onContinue, onExecute, refinementModel, refinementThinkingLevel, currentSessionId, currentSessionProjectId, currentSessionContext = [], availableSessionIds = [] }: {
 	onContinue?: (projectId: string, prompt: string) => void;
 	onExecute?: (projectId: string, prompt: string, model?: { provider: string; modelId: string }, thinkingLevel?: string) => Promise<string | null>;
 	refinementModel?: { provider: string; modelId: string };
+	refinementThinkingLevel?: string;
 	currentSessionId?: string;
 	currentSessionProjectId?: string;
 	currentSessionContext?: readonly { role: string; text: string }[];
@@ -247,9 +248,10 @@ export function ProjectIdeasModal({ onContinue, onExecute, refinementModel, curr
 			projectId,
 			targetKey: refinementTargetKey,
 			...(refinementModel ? { model: refinementModel } : {}),
+			...(refinementThinkingLevel ? { thinkingLevel: refinementThinkingLevel } : {}),
 			prompt: buildProjectIdeaRefinementPrompt({ title: draft.title, body: draft.body }, context ?? undefined),
 		});
-	}, [currentSessionContext, draft.body, draft.title, projectId, refinement, refinementModel, refinementTargetKey, refinementUseContext]);
+	}, [currentSessionContext, draft.body, draft.title, projectId, refinement, refinementModel, refinementTargetKey, refinementThinkingLevel, refinementUseContext]);
 
 	const acceptRefinement = useCallback(async () => {
 		if (!projectId || !refinementDraft?.summary.trim()) return;

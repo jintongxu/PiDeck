@@ -126,6 +126,7 @@ let previewSettings: AppSettings = {
 	gitCommitMessageModel: "",
 	projectIdeaRefinementProvider: "",
 	projectIdeaRefinementModel: "",
+	projectIdeaRefinementThinkingLevel: "",
 	gitExecutablePath: "",
 	dshRunnerNodePath: "",
 	closeToTray: true,
