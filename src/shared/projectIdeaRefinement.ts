@@ -1,21 +1,10 @@
-/** Pi thinking levels accepted by the project-idea refinement setting. */
-export const PROJECT_IDEA_REFINEMENT_THINKING_LEVELS = [
-	"off",
-	"minimal",
-	"low",
-	"medium",
-	"high",
-	"xhigh",
-	"max",
-] as const;
-
-export type ProjectIdeaRefinementThinkingLevel = typeof PROJECT_IDEA_REFINEMENT_THINKING_LEVELS[number];
-
-/** Empty/unknown persisted values keep the provider/model default behavior. */
+/**
+ * Normalize the persisted project-idea effort without hard-coding the current
+ * catalog. Providers may add a future effort id; capability metadata remains the
+ * authority for whether that id can be used with the selected model.
+ */
 export function normalizeProjectIdeaRefinementThinkingLevel(value: unknown): string {
 	if (typeof value !== "string") return "";
 	const normalized = value.trim();
-	return (PROJECT_IDEA_REFINEMENT_THINKING_LEVELS as readonly string[]).includes(normalized)
-		? normalized
-		: "";
+	return normalized.length <= 64 ? normalized : "";
 }

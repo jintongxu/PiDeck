@@ -159,7 +159,7 @@ type SettingsModalProps = {
 	onClearCheckFlag?: () => void;
 	onOpenWebService: (port: string) => void;
 	onClose: () => void;
-	onChange: (patch: Partial<AppSettings>) => Promise<boolean>;
+	onChange: (patch: Partial<AppSettings>, options?: { silent?: boolean }) => Promise<boolean>;
 	/** 当前项目身份：项目资源操作只使用主进程登记的 id。 */
 	projectId?: string;
 	/** PiDeck 当前加载的全部项目（作用域下拉展示；Chat 项目除外）。 */
@@ -391,7 +391,7 @@ function SettingsModalContent(props: SettingsModalProps) {
 	}, []);
 
 	/** 保存全部内容：全局设置差异提交（无差异也提交空 patch，触发「已保存」反馈）+ 视觉桥/生图草稿（若有改动）；返回是否全部成功 */
-	const saveAll = async (): Promise<boolean> => {
+	const saveAll = async (options?: { silent?: boolean }): Promise<boolean> => {
 		let ok = true;
 		// 无修改也支持再次保存：始终提交当前草稿差异（无差异即空 patch），
 		// updateSettings 会走 api.settings.update 并提示「设置已保存」，因此保存按钮无需因「无修改」禁用。
@@ -400,7 +400,7 @@ function SettingsModalContent(props: SettingsModalProps) {
 			(patch as Record<string, unknown>)[key] = (draftSettings as Record<string, unknown>)[key];
 		}
 		// 需要等持久化结果再推进基准；更新安装会马上退出，不能让异步写入被进程终止。
-		const settingsOk = await props.onChange(patch).catch(() => false);
+		const settingsOk = await props.onChange(patch, options).catch(() => false);
 		ok = ok && settingsOk;
 		if (settingsOk) {
 			baseSnapshotRef.current = deepClone(draftSettings);
@@ -468,7 +468,7 @@ function SettingsModalContent(props: SettingsModalProps) {
 	/** 保存关闭/安装前的全部脏来源；任一来源失败时保留弹窗和草稿供用户重试。 */
 	const savePendingChanges = async (): Promise<boolean> => {
 		const settingsDirty = dirtyFields.size > 0 || visionDraft.dirty || imageGenDirty;
-		const settingsOk = settingsDirty ? await saveAll() : true;
+		const settingsOk = settingsDirty ? await saveAll({ silent: configPaneState.hasDirty }) : true;
 		const configOk = configPaneState.hasDirty
 			? ((await configPaneRef.current?.saveAllDirty()) ?? false)
 			: true;
@@ -628,7 +628,7 @@ function SettingsModalContent(props: SettingsModalProps) {
 								<Button
 									variant="default"
 									size="sm"
-									onClick={saveAll}
+									onClick={() => void saveAll()}
 									disabled={
 											visionDraft.saving ||
 											(visionDraft.dirty && visionDraft.modelMissing) ||
@@ -701,6 +701,7 @@ function SettingsModalContent(props: SettingsModalProps) {
 							projectIdeaRefinementThinkingLevel={draftSettings.projectIdeaRefinementThinkingLevel}
 							onProjectIdeaRefinementModelChange={(model) => updateDraft(model ? { projectIdeaRefinementProvider: model.provider, projectIdeaRefinementModel: model.modelId } : { projectIdeaRefinementProvider: "", projectIdeaRefinementModel: "", projectIdeaRefinementThinkingLevel: "" })}
 							onProjectIdeaRefinementThinkingLevelChange={(level) => updateDraft({ projectIdeaRefinementThinkingLevel: level })}
+							onBeforeSaveCurrent={() => saveAll({ silent: true })}
 							onStateChange={handleConfigPaneStateChange}
 							// 嵌套弹层（用量查询「让 AI 帮我查」）整窗关闭走统一关闭确认，
 							// 不直连 onClose 裸关闭——系统设置/配置管理草稿都不能被静默丢弃。

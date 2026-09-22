@@ -2828,7 +2828,7 @@ export function App() {
     }
   }
 
-  async function updateSettings(patch: Partial<AppSettings>) {
+  async function updateSettings(patch: Partial<AppSettings>, options?: { silent?: boolean }) {
     const changesWebService =
       "webServiceEnabled" in patch ||
       "webServiceHost" in patch ||
@@ -2902,7 +2902,7 @@ export function App() {
           void refreshProjectSessions(activeProjectId, true).catch(() => undefined);
         }
       }
-      showToast(notice);
+      if (!options?.silent) showToast(notice);
       return true;
     } catch (error) {
       setSettings(await api.settings.get());

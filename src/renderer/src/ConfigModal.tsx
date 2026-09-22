@@ -326,6 +326,8 @@ export type ConfigPaneProps = {
 	onProjectIdeaRefinementThinkingLevelChange?: (level: string) => void;
 	/** 深链：打开时落在的后端分页（DSH 配置 / Pi 管理）；缺省保持上次位置。 */
 	focusBackendPane?: "dsh" | "pi";
+	/** 嵌入设置窗口时，先提交外层 AppSettings 草稿，再保存配置管理当前页。 */
+	onBeforeSaveCurrent?: () => Promise<boolean>;
 	/**
 	 * 头部按钮状态上报（saving 禁用保存 / hasDirty 黄点 / unsaved 关闭确认清单）。
 	 * 外壳把这些 UI 细节呈现在自己的标题栏，因此 ConfigPane 需要把内部状态同步给外壳。
@@ -343,7 +345,7 @@ export type ConfigPaneProps = {
  * 不包错误边界——宿主 SettingsModal 的 ErrorBoundary 已兜底整个窗口。
  */
 export const ConfigPane = forwardRef<ConfigPaneHandle, ConfigPaneProps>(
-	function ConfigPane({ onClose, onSaved, projectId, projectKind, projectName, projects, resourceOnly, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, projectIdeaRefinementThinkingLevel, onProjectIdeaRefinementModelChange, onProjectIdeaRefinementThinkingLevelChange, onStateChange, onRequestClose }, ref) {
+	function ConfigPane({ onClose, onSaved, projectId, projectKind, projectName, projects, resourceOnly, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, projectIdeaRefinementThinkingLevel, onProjectIdeaRefinementModelChange, onProjectIdeaRefinementThinkingLevelChange, onBeforeSaveCurrent, onStateChange, onRequestClose }, ref) {
 		return (
 			<ConfigModalContent
 				open
@@ -361,6 +363,7 @@ export const ConfigPane = forwardRef<ConfigPaneHandle, ConfigPaneProps>(
 				projectIdeaRefinementThinkingLevel={projectIdeaRefinementThinkingLevel}
 				onProjectIdeaRefinementModelChange={onProjectIdeaRefinementModelChange}
 				onProjectIdeaRefinementThinkingLevelChange={onProjectIdeaRefinementThinkingLevelChange}
+				onBeforeSaveCurrent={onBeforeSaveCurrent}
 				embedded
 				paneRef={ref}
 				onPaneStateChange={onStateChange}
@@ -450,6 +453,8 @@ type ConfigModalContentProps = ConfigModalProps & {
 	projectIdeaRefinementThinkingLevel?: string;
 	onProjectIdeaRefinementModelChange?: (model: { provider: string; modelId: string } | null) => void;
 	onProjectIdeaRefinementThinkingLevelChange?: (level: string) => void;
+	/** 嵌入设置窗口时，先提交外层 AppSettings 草稿，再保存配置管理当前页。 */
+	onBeforeSaveCurrent?: () => Promise<boolean>;
 	/** 嵌入模式：不渲染 Dialog 外壳与标题栏按钮（宿主提供窗口），自身仍维护全部状态/保存/关闭确认逻辑 */
 	embedded?: boolean;
 	/** embedded 时暴露给宿主标题栏按钮的句柄 */
@@ -464,7 +469,7 @@ type ConfigModalContentProps = ConfigModalProps & {
 };
 
 function ConfigModalContent(props: ConfigModalContentProps) {
-	const { open, onClose, onSaved, projectId, projectKind, projectName, projects = [], resourceOnly = false, embedded, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, projectIdeaRefinementThinkingLevel = "", onProjectIdeaRefinementModelChange, onProjectIdeaRefinementThinkingLevelChange } = props;
+	const { open, onClose, onSaved, projectId, projectKind, projectName, projects = [], resourceOnly = false, embedded, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, projectIdeaRefinementThinkingLevel = "", onProjectIdeaRefinementModelChange, onProjectIdeaRefinementThinkingLevelChange, onBeforeSaveCurrent } = props;
 	/**
 	 * 资源作用域是派生值而非可切换 state：
 	 * - 主配置页固定 global（全局安装 + 用户 ~/.pi 自装 + PiDeck 内置）；项目级技能/扩展/提示词
@@ -494,10 +499,22 @@ function ConfigModalContent(props: ConfigModalContentProps) {
 	const [ideaModelsRefreshing, setIdeaModelsRefreshing] = useState(false);
 	const [ideaModelPickerOpen, setIdeaModelPickerOpen] = useState(false);
 	const selectedIdeaModel = ideaModels.find((model) => model.provider === projectIdeaRefinementModel?.provider && model.id === projectIdeaRefinementModel.modelId);
-	const ideaThinkingLevels = resolveThinkingPickerLevels({
+	const resolvedIdeaThinkingLevels = resolveThinkingPickerLevels({
 		backend: "pi",
 		cachedPiLevels: selectedIdeaModel?.thinkingLevels,
 	});
+	// Keep a persisted/future effort visible until capability hydration can decide;
+	// once the selected model reports authoritative levels, the effect below clears
+	// an incompatible saved value instead of sending it to the provider.
+	const ideaThinkingLevels = projectIdeaRefinementThinkingLevel && !resolvedIdeaThinkingLevels.some((level) => level.value === projectIdeaRefinementThinkingLevel)
+		? [...resolvedIdeaThinkingLevels, { value: projectIdeaRefinementThinkingLevel, label: projectIdeaRefinementThinkingLevel }]
+		: resolvedIdeaThinkingLevels;
+	useEffect(() => {
+		if (!projectIdeaRefinementThinkingLevel || !selectedIdeaModel?.thinkingLevels) return;
+		if (!selectedIdeaModel.thinkingLevels.includes(projectIdeaRefinementThinkingLevel)) {
+			onProjectIdeaRefinementThinkingLevelChange?.("");
+		}
+	}, [onProjectIdeaRefinementThinkingLevelChange, projectIdeaRefinementThinkingLevel, selectedIdeaModel]);
 	useEffect(() => {
 		if (!open || section !== "config" || tab !== "models") return;
 		void desktopApi.projects.listModelsReport(undefined, false).then((report) => {
@@ -2443,7 +2460,10 @@ function ConfigModalContent(props: ConfigModalContentProps) {
 	useImperativeHandle(
 		props.paneRef,
 		() => ({
-			saveCurrent: () => handleSaveCurrent(),
+			saveCurrent: async () => {
+				if (onBeforeSaveCurrent && !(await onBeforeSaveCurrent())) return;
+				await handleSaveCurrent();
+			},
 			exportConfig: handleExport,
 			importConfig: handleImport,
 			// 外壳统一关闭确认时调用：把配置分区全部脏来源逐个保存（dsh:<nav> 归并 dsh），
@@ -2460,7 +2480,7 @@ function ConfigModalContent(props: ConfigModalContentProps) {
 				return true;
 			},
 		}),
-		[handleSaveCurrent, handleExport, handleImport, saveByKey, dirtyTabs],
+		[handleSaveCurrent, handleExport, handleImport, onBeforeSaveCurrent, saveByKey, dirtyTabs],
 	);
 	// 标题栏保存触发页内提交后，下一轮 state 更新会重新进入 models 保存路径；
 	// 这样用户一次点击即可完成「页内草稿 → models.json」两步提交。
