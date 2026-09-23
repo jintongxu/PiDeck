@@ -5,6 +5,7 @@ import { ipcChannels } from "../../shared/ipc";
 import type {
 	CreateProjectIdeaInput,
 	FeedbackProjectContext,
+	ProjectIdeaKind,
 	ProjectIdeaRefinement,
 	ProjectIdeaStatus,
 	UpdateProjectIdeaInput,
@@ -33,6 +34,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isProjectIdeaStatus(value: unknown): value is ProjectIdeaStatus {
 	return value === "inbox" || value === "planned" || value === "doing" || value === "done";
+}
+
+function isProjectIdeaKind(value: unknown): value is ProjectIdeaKind {
+	return value === "implementation" || value === "brainstorm";
 }
 
 function isProjectIdeaSourceKind(value: unknown): value is "message" | "selection" {
@@ -86,6 +91,7 @@ function parseCreateProjectIdea(value: unknown): CreateProjectIdeaInput {
 		throw new Error("INVALID_PROJECT_IDEA");
 	}
 	if (value.status !== undefined && !isProjectIdeaStatus(value.status)) throw new Error("PROJECT_IDEA_STATUS_INVALID");
+	if (value.kind !== undefined && !isProjectIdeaKind(value.kind)) throw new Error("PROJECT_IDEA_KIND_INVALID");
 	if (value.sourceKind !== undefined && !isProjectIdeaSourceKind(value.sourceKind)) throw new Error("PROJECT_IDEA_SOURCE_KIND_INVALID");
 	if (value.sourceMessageId !== undefined && value.sourceSessionId === undefined) {
 		throw new Error("PROJECT_IDEA_SOURCE_SESSION_REQUIRED");
@@ -94,11 +100,14 @@ function parseCreateProjectIdea(value: unknown): CreateProjectIdeaInput {
 		projectId: value.projectId,
 		title: value.title,
 		body: value.body === undefined ? undefined : typeof value.body === "string" ? value.body : (() => { throw new Error("INVALID_PROJECT_IDEA_BODY"); })(),
+		kind: value.kind,
 		refinement: parseRefinement(value.refinement),
 		status: value.status,
 		tags: parseStringArray(value.tags, "tags"),
 		linkedSessionIds: parseStringArray(value.linkedSessionIds, "linked_session_ids"),
 		sourceSessionId: value.sourceSessionId === undefined ? undefined : typeof value.sourceSessionId === "string" ? value.sourceSessionId : (() => { throw new Error("INVALID_PROJECT_IDEA_SOURCE_SESSION"); })(),
+		derivedFromIdeaId: value.derivedFromIdeaId === undefined ? undefined : typeof value.derivedFromIdeaId === "string" ? value.derivedFromIdeaId : (() => { throw new Error("INVALID_PROJECT_IDEA_DERIVED_IDEA"); })(),
+		selectedPlanId: value.selectedPlanId === undefined ? undefined : typeof value.selectedPlanId === "string" ? value.selectedPlanId : (() => { throw new Error("INVALID_PROJECT_IDEA_PLAN"); })(),
 		sourceMessageId: value.sourceMessageId === undefined ? undefined : typeof value.sourceMessageId === "string" ? value.sourceMessageId : (() => { throw new Error("INVALID_PROJECT_IDEA_SOURCE_MESSAGE"); })(),
 		sourceKind: value.sourceKind,
 	};
@@ -115,6 +124,10 @@ function parseUpdateProjectIdea(value: unknown): UpdateProjectIdeaInput {
 		if (typeof value.body !== "string") throw new Error("INVALID_PROJECT_IDEA_BODY");
 		patch.body = value.body;
 	}
+	if ("kind" in value) {
+		if (!isProjectIdeaKind(value.kind)) throw new Error("PROJECT_IDEA_KIND_INVALID");
+		patch.kind = value.kind;
+	}
 	if ("refinement" in value) patch.refinement = parseRefinement(value.refinement);
 	if ("status" in value) {
 		if (!isProjectIdeaStatus(value.status)) throw new Error("PROJECT_IDEA_STATUS_INVALID");
@@ -125,6 +138,14 @@ function parseUpdateProjectIdea(value: unknown): UpdateProjectIdeaInput {
 	if ("sourceSessionId" in value) {
 		if (value.sourceSessionId !== null && typeof value.sourceSessionId !== "string") throw new Error("INVALID_PROJECT_IDEA_SOURCE_SESSION");
 		patch.sourceSessionId = value.sourceSessionId;
+	}
+	if ("derivedFromIdeaId" in value) {
+		if (value.derivedFromIdeaId !== null && typeof value.derivedFromIdeaId !== "string") throw new Error("INVALID_PROJECT_IDEA_DERIVED_IDEA");
+		patch.derivedFromIdeaId = value.derivedFromIdeaId;
+	}
+	if ("selectedPlanId" in value) {
+		if (value.selectedPlanId !== null && typeof value.selectedPlanId !== "string") throw new Error("INVALID_PROJECT_IDEA_PLAN");
+		patch.selectedPlanId = value.selectedPlanId;
 	}
 	if ("sourceMessageId" in value) {
 		if (value.sourceMessageId !== null && typeof value.sourceMessageId !== "string") throw new Error("INVALID_PROJECT_IDEA_SOURCE_MESSAGE");
@@ -311,12 +332,33 @@ export function registerProjectsIpc({
 			throw new Error("PROJECT_IDEA_SOURCE_SESSION_INVALID");
 		}
 	};
+	const assertIdeaParentProject = async (parentId: string | null | undefined, projectId: string, childId?: string) => {
+		const normalizedParentId = parentId?.trim();
+		if (!normalizedParentId) return;
+		const parent = await projectIdeaStore.get(normalizedParentId);
+		if (!parent) throw new Error("PROJECT_IDEA_PARENT_NOT_FOUND");
+		if (parent.projectId !== projectId) throw new Error("PROJECT_IDEA_PARENT_PROJECT_MISMATCH");
+		const visited = new Set<string>(childId ? [childId] : []);
+		let current: typeof parent | null = parent;
+		while (current) {
+			if (visited.has(current.id)) throw new Error("PROJECT_IDEA_PARENT_CYCLE");
+			visited.add(current.id);
+			const nextId = current.derivedFromIdeaId;
+			if (!nextId || visited.has(nextId)) {
+				if (nextId && visited.has(nextId)) throw new Error("PROJECT_IDEA_PARENT_CYCLE");
+				break;
+			}
+			current = await projectIdeaStore.get(nextId);
+			// An old orphan reference is allowed; the hierarchy treats it as a root.
+		}
+	};
 
 	ipcMain.handle(ipcChannels.projectIdeasCreate, async (_event, input: unknown) => {
 		const parsed = parseCreateProjectIdea(input);
 		assertIdeaProject(parsed.projectId);
 		if (!parsed.title.trim()) throw new Error("PROJECT_IDEA_TITLE_REQUIRED");
 		assertSourceSessionProject(parsed.sourceSessionId, parsed.projectId);
+		await assertIdeaParentProject(parsed.derivedFromIdeaId, parsed.projectId);
 		return projectIdeaStore.create(parsed);
 	});
 	ipcMain.handle(ipcChannels.projectIdeasUpdate, async (_event, id: unknown, projectId: unknown, patch: unknown) => {
@@ -343,6 +385,9 @@ export function registerProjectsIpc({
 			parsedPatch.sourceKind = null;
 		}
 		assertSourceSessionProject(sourceSessionId, ownerProjectId);
+		if ("derivedFromIdeaId" in parsedPatch) {
+			await assertIdeaParentProject(parsedPatch.derivedFromIdeaId, ownerProjectId, id);
+		}
 		return projectIdeaStore.update(id, parsedPatch);
 	});
 	ipcMain.handle(ipcChannels.projectIdeasDelete, async (_event, id: unknown, projectId: unknown) => {

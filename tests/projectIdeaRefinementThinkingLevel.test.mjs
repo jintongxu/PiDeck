@@ -29,6 +29,7 @@ test("project-idea reasoning effort is persisted, rendered, and passed to refine
   assert.match(config, /onProjectIdeaRefinementThinkingLevelChange/);
   assert.match(config, /selectedIdeaModel\.thinkingLevels\.includes\(projectIdeaRefinementThinkingLevel\)/);
   assert.match(ideas, /refinementThinkingLevel\?: string/);
+  assert.match(ideas, /onBrainstorm\?: \(projectId: string, prompt: string, model\?/);
   assert.match(ideas, /thinkingLevel: refinementThinkingLevel/);
   assert.match(hook, /thinkingLevel\?: string/);
   assert.match(hook, /input\.thinkingLevel \? \{ thinkingLevel: input\.thinkingLevel \} : \{\}/);
@@ -38,5 +39,7 @@ test("empty project-idea reasoning effort keeps the model default", () => {
   const ideas = readFileSync("src/renderer/src/components/projectIdeas/ProjectIdeasModal.tsx", "utf8");
   const hook = readFileSync("src/renderer/src/hooks/useProjectIdeaRefinement.ts", "utf8");
   assert.match(ideas, /\.\.\.\(refinementThinkingLevel \? \{ thinkingLevel: refinementThinkingLevel \} : \{\}\)/);
+  assert.doesNotMatch(ideas, /brainstormModel/);
+  assert.doesNotMatch(ideas, /brainstormThinkingLevel/);
   assert.match(hook, /\.\.\.\(input\.thinkingLevel \? \{ thinkingLevel: input\.thinkingLevel \} : \{\}\)/);
 });

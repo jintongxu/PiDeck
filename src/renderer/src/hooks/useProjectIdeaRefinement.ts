@@ -103,6 +103,7 @@ export function useProjectIdeaRefinement() {
 				projectId: input.projectId,
 				title: "Project idea refinement",
 				backend,
+				noTools: true,
 				...(input.model ? { model: input.model } : {}),
 				...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {}),
 			});

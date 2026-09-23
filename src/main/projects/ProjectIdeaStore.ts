@@ -4,6 +4,7 @@ import { dirname } from "node:path";
 import type {
 	CreateProjectIdeaInput,
 	ProjectIdea,
+	ProjectIdeaKind,
 	ProjectIdeaStatus,
 	UpdateProjectIdeaInput,
 } from "../../shared/types";
@@ -31,6 +32,10 @@ function isRecord(value: unknown): value is Record<string, unknown> {
 
 function isStatus(value: unknown): value is ProjectIdeaStatus {
 	return typeof value === "string" && STATUSES.some((status) => status === value);
+}
+
+function isKind(value: unknown): value is ProjectIdeaKind {
+	return value === "implementation" || value === "brainstorm";
 }
 
 function isSourceKind(value: unknown): value is "message" | "selection" {
@@ -107,12 +112,20 @@ function normalizeIdea(value: unknown): ProjectIdea | null {
 		projectId,
 		title,
 		body: typeof candidate.body === "string" ? candidate.body.slice(0, MAX_BODY_LENGTH) : "",
+		// Existing persisted ideas predate the kind field and remain implementation ideas.
+		kind: isKind(candidate.kind) ? candidate.kind : "implementation",
 		...(refinement ? { refinement } : {}),
 		status: isStatus(candidate.status) ? candidate.status : "inbox",
 		tags: stringList(candidate.tags, MAX_TAGS, MAX_TAG_LENGTH),
 		linkedSessionIds: stringList(candidate.linkedSessionIds, MAX_LINKED_SESSIONS, MAX_SOURCE_ID_LENGTH),
 		...(typeof candidate.sourceSessionId === "string" && candidate.sourceSessionId.trim()
 			? { sourceSessionId: candidate.sourceSessionId.trim().slice(0, MAX_SOURCE_ID_LENGTH) }
+			: {}),
+		...(typeof candidate.derivedFromIdeaId === "string" && candidate.derivedFromIdeaId.trim()
+			? { derivedFromIdeaId: candidate.derivedFromIdeaId.trim().slice(0, MAX_SOURCE_ID_LENGTH) }
+			: {}),
+		...(typeof candidate.selectedPlanId === "string" && candidate.selectedPlanId.trim()
+			? { selectedPlanId: candidate.selectedPlanId.trim().slice(0, MAX_SOURCE_ID_LENGTH) }
 			: {}),
 		...(typeof candidate.sourceMessageId === "string" && candidate.sourceMessageId.trim()
 			? { sourceMessageId: candidate.sourceMessageId.trim().slice(0, MAX_SOURCE_ID_LENGTH) }
@@ -196,19 +209,27 @@ export class ProjectIdeaStore {
 		await this.load();
 		const title = text(input.title, MAX_TITLE_LENGTH);
 		if (!input.projectId || !title) throw new Error("PROJECT_IDEA_TITLE_REQUIRED");
+		const parentId = text(input.derivedFromIdeaId, MAX_SOURCE_ID_LENGTH) || undefined;
+		if (parentId) this.validateParent(input.projectId, parentId);
 		const status = isStatus(input.status) ? input.status : "inbox";
+		const kind = isKind(input.kind) ? input.kind : "implementation";
 		const refinement = normalizeRefinement(input.refinement);
 		const idea: ProjectIdea = {
 			id: randomUUID(),
 			projectId: input.projectId,
 			title,
 			body: typeof input.body === "string" ? input.body.slice(0, MAX_BODY_LENGTH) : "",
+			kind,
 			...(refinement ? { refinement } : {}),
 			status,
 			tags: stringList(input.tags, MAX_TAGS, MAX_TAG_LENGTH),
 			linkedSessionIds: stringList(input.linkedSessionIds, MAX_LINKED_SESSIONS, MAX_SOURCE_ID_LENGTH),
 			...(typeof input.sourceSessionId === "string" && input.sourceSessionId.trim()
 				? { sourceSessionId: input.sourceSessionId.trim().slice(0, MAX_SOURCE_ID_LENGTH) }
+				: {}),
+			...(parentId ? { derivedFromIdeaId: parentId } : {}),
+			...(typeof input.selectedPlanId === "string" && input.selectedPlanId.trim()
+				? { selectedPlanId: input.selectedPlanId.trim().slice(0, MAX_SOURCE_ID_LENGTH) }
 				: {}),
 			...(typeof input.sourceMessageId === "string" && input.sourceMessageId.trim()
 				? { sourceMessageId: input.sourceMessageId.trim().slice(0, MAX_SOURCE_ID_LENGTH) }
@@ -227,12 +248,21 @@ export class ProjectIdeaStore {
 		await this.load();
 		const idea = this.ideas.find((candidate) => candidate.id === id);
 		if (!idea) throw new Error("PROJECT_IDEA_NOT_FOUND");
+		// Validate parent changes before mutating the in-memory record or scheduling persistence.
+		if (patch.derivedFromIdeaId !== undefined && patch.derivedFromIdeaId !== null) {
+			const parentId = text(patch.derivedFromIdeaId, MAX_SOURCE_ID_LENGTH);
+			if (parentId) this.validateParent(idea.projectId, parentId, id);
+		}
 		if (patch.title !== undefined) {
 			const title = text(patch.title, MAX_TITLE_LENGTH);
 			if (!title) throw new Error("PROJECT_IDEA_TITLE_REQUIRED");
 			idea.title = title;
 		}
 		if (patch.body !== undefined) idea.body = typeof patch.body === "string" ? patch.body.slice(0, MAX_BODY_LENGTH) : "";
+		if (patch.kind !== undefined) {
+			if (!isKind(patch.kind)) throw new Error("PROJECT_IDEA_KIND_INVALID");
+			idea.kind = patch.kind;
+		}
 		if (patch.refinement !== undefined) {
 			const refinement = normalizeRefinement(patch.refinement);
 			if (refinement) idea.refinement = refinement;
@@ -247,6 +277,12 @@ export class ProjectIdeaStore {
 		if (patch.tags !== undefined) idea.tags = stringList(patch.tags, MAX_TAGS, MAX_TAG_LENGTH);
 		if (patch.linkedSessionIds !== undefined) idea.linkedSessionIds = stringList(patch.linkedSessionIds, MAX_LINKED_SESSIONS, MAX_SOURCE_ID_LENGTH);
 		if (patch.sourceSessionId !== undefined) idea.sourceSessionId = text(patch.sourceSessionId, MAX_SOURCE_ID_LENGTH) || undefined;
+		if (patch.derivedFromIdeaId !== undefined) {
+			const parentId = patch.derivedFromIdeaId === null ? "" : text(patch.derivedFromIdeaId, MAX_SOURCE_ID_LENGTH);
+			if (parentId) idea.derivedFromIdeaId = parentId;
+			else delete idea.derivedFromIdeaId;
+		}
+		if (patch.selectedPlanId !== undefined) idea.selectedPlanId = text(patch.selectedPlanId, MAX_SOURCE_ID_LENGTH) || undefined;
 		if (patch.sourceMessageId !== undefined) idea.sourceMessageId = text(patch.sourceMessageId, MAX_SOURCE_ID_LENGTH) || undefined;
 		if (patch.sourceKind !== undefined) {
 			if (patch.sourceKind === null) delete idea.sourceKind;
@@ -278,6 +314,23 @@ export class ProjectIdeaStore {
 		const deleted = before - this.ideas.length;
 		if (deleted > 0) await this.persist();
 		return deleted;
+	}
+
+	/** Ensures a parent exists in the same project and does not introduce a cycle. */
+	private validateParent(projectId: string, parentId: string, childId?: string): void {
+		if (childId !== undefined && parentId === childId) throw new Error("PROJECT_IDEA_PARENT_CYCLE");
+		const parent = this.ideas.find((candidate) => candidate.id === parentId);
+		if (!parent) throw new Error("PROJECT_IDEA_PARENT_NOT_FOUND");
+		if (parent.projectId !== projectId) throw new Error("PROJECT_IDEA_PARENT_PROJECT_MISMATCH");
+		const visited = new Set<string>();
+		let current: ProjectIdea | undefined = parent;
+		while (current?.derivedFromIdeaId) {
+			if (visited.has(current.id)) throw new Error("PROJECT_IDEA_PARENT_CYCLE");
+			visited.add(current.id);
+			const nextId: string = current.derivedFromIdeaId;
+			if (nextId === childId) throw new Error("PROJECT_IDEA_PARENT_CYCLE");
+			current = this.ideas.find((candidate) => candidate.id === nextId);
+		}
 	}
 
 	private async persist(): Promise<void> {

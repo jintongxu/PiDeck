@@ -4542,15 +4542,13 @@ export function App() {
           });
       }}
       onExecute={async (projectId, prompt, model, thinkingLevel, sessionTitle) => {
-        const reuseCurrentSession = Boolean(
-          currentSessionId &&
-          currentSession?.projectId === projectId &&
-          !model &&
-          !thinkingLevel,
-        );
-        const targetSession = reuseCurrentSession
-          ? currentSession
-          : await createSessionDraftWithTab(projectId, { ...(model ? { model } : {}), ...(thinkingLevel ? { thinkingLevel } : {}) });
+        // 正式实现必须使用全新的普通会话：当前聚焦会话可能仍处于
+        // Plan/只读状态（尤其是刚完成头脑风暴或方案整理时），复用它会让
+        // 实现请求再次被计划门禁暂停。
+        const targetSession = await createSessionDraftWithTab(projectId, {
+          ...(model ? { model } : {}),
+          ...(thinkingLevel ? { thinkingLevel } : {}),
+        });
         if (!targetSession) return null;
 
         if (!store.get(sessionRuntimeBySessionIdAtomFamily(targetSession.id))?.agentId) {
@@ -4558,7 +4556,7 @@ export function App() {
         }
         // 激活后走 updateRecord：后者会通过 runtime 的 set_session_name
         // 持久化到会话文件，并让自动标题扩展尊重本次命名。
-        if (!reuseCurrentSession && sessionTitle?.trim()) {
+        if (sessionTitle?.trim()) {
           try {
             const renamed = await api.sessions.updateRecord(targetSession.id, { title: sessionTitle });
             upsertSession(renamed);
