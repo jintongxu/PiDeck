@@ -222,6 +222,26 @@ test("自动标题设置以显式环境标志注入 pi 进程", async () => {
 	);
 	await enabledProc.start(undefined, undefined, true);
 	assert.equal(enabled.getCaptured()?.env?.PIDECK_AUTO_SESSION_TITLE, "1");
+	assert.equal(enabled.getCaptured()?.env?.PIDECK_AUTO_SESSION_TITLE_MODEL, "");
+	assert.equal(enabled.getCaptured()?.env?.PIDECK_AUTO_SESSION_TITLE_THINKING, "");
+
+	const configured = loadPiProcess();
+	const configuredProc = new configured.PiProcess(
+		"C:\\proj",
+		{
+			autoSessionTitle: true,
+			autoSessionTitleProvider: "openai",
+			autoSessionTitleModel: "gpt-5-mini",
+			autoSessionTitleThinkingLevel: "low",
+			wslEnabled: true,
+			wslDistro: "Ubuntu",
+			wslUser: "root",
+		},
+		configured.mockLocator,
+	);
+	await configuredProc.start(undefined, undefined, true);
+	assert.equal(configured.getCaptured()?.env?.PIDECK_AUTO_SESSION_TITLE_MODEL, "openai/gpt-5-mini");
+	assert.equal(configured.getCaptured()?.env?.PIDECK_AUTO_SESSION_TITLE_THINKING, "low");
 });
 
 test("白名单总开关 disableExtensionWhitelist=true 时不再注入 --no-extensions/-e", async () => {

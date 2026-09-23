@@ -697,6 +697,10 @@ function SettingsModalContent(props: SettingsModalProps) {
 							focusConfigTab={configFocus?.configTab}
 							focusProvider={configFocus?.provider}
 							focusBackendPane={configFocus?.backendPane}
+							autoSessionTitleModel={draftSettings.autoSessionTitleProvider && draftSettings.autoSessionTitleModel ? { provider: draftSettings.autoSessionTitleProvider, modelId: draftSettings.autoSessionTitleModel } : undefined}
+							autoSessionTitleThinkingLevel={draftSettings.autoSessionTitleThinkingLevel}
+							onAutoSessionTitleModelChange={(model) => updateDraft(model ? { autoSessionTitleProvider: model.provider, autoSessionTitleModel: model.modelId } : { autoSessionTitleProvider: "", autoSessionTitleModel: "", autoSessionTitleThinkingLevel: "" })}
+							onAutoSessionTitleThinkingLevelChange={(level) => updateDraft({ autoSessionTitleThinkingLevel: level })}
 							projectIdeaRefinementModel={draftSettings.projectIdeaRefinementProvider && draftSettings.projectIdeaRefinementModel ? { provider: draftSettings.projectIdeaRefinementProvider, modelId: draftSettings.projectIdeaRefinementModel } : undefined}
 							projectIdeaRefinementThinkingLevel={draftSettings.projectIdeaRefinementThinkingLevel}
 							onProjectIdeaRefinementModelChange={(model) => updateDraft(model ? { projectIdeaRefinementProvider: model.provider, projectIdeaRefinementModel: model.modelId } : { projectIdeaRefinementProvider: "", projectIdeaRefinementModel: "", projectIdeaRefinementThinkingLevel: "" })}

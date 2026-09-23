@@ -21,6 +21,11 @@ const root = path.resolve(__dirname, "..");
 // 如需换成别的名字，只改这里即可。
 const DEV_OUTPUT_DIR = "release-dev";
 
+// Remove stale setup/unpacked artifacts before every temporary build. A stale
+// executable was previously easy to launch by mistake and could look like the
+// formal client because both versions render the same main page.
+fs.rmSync(path.join(root, DEV_OUTPUT_DIR), { recursive: true, force: true });
+
 const args = process.argv.slice(2);
 // 默认 --dir（win-unpacked 目录，秒级验证）；传了格式参数就用传入的
 const formats = args.length > 0 ? args.join(" ") : "--dir";
@@ -45,6 +50,14 @@ execSync(
 );
 
 const outDir = path.join(root, DEV_OUTPUT_DIR);
+const version = JSON.parse(fs.readFileSync(path.join(root, "package.json"), "utf8")).version;
+const requestedFormats = new Set(args.map((arg) => arg.replace(/^--/, "").toLowerCase()));
+if (requestedFormats.has("portable")) {
+  const expectedPortable = path.join(outDir, `PiDeck-Dev-${version}-temporary-portable.exe`);
+  if (!fs.existsSync(expectedPortable)) {
+    throw new Error(`Temporary build did not produce the expected isolated portable EXE: ${expectedPortable}`);
+  }
+}
 console.log(`\n✅ 打包完成，产物在 ${DEV_OUTPUT_DIR}/`);
 if (fs.existsSync(outDir)) {
   const files = fs.readdirSync(outDir).filter((name) => !/\.(blockmap|yml)$/.test(name) && !name.startsWith("."));

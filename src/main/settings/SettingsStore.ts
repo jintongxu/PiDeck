@@ -20,6 +20,11 @@ import { getAppLogger } from "../logging/sharedLogger";
 import { setConfiguredGitPath } from "../git/gitExecutable";
 import { normalizeProjectIdeaRefinementThinkingLevel } from "../../shared/projectIdeaRefinement";
 
+function normalizeTitleSetting(value: unknown): string {
+	if (typeof value !== "string") return "";
+	return value.trim().slice(0, 160);
+}
+
 /** 桌面端 settings.json（userData），与 pi agent settings 分离 */
 function desktopSettingsPath() {
 	return join(app.getPath("userData"), "settings.json");
@@ -112,6 +117,10 @@ const defaultSettings: AppSettings = {
   sessionTabOpenMode: "preview",
   // 默认关闭：标题请求会额外调用当前 pi 模型并消耗 token，避免用户无感知地产生用量。
   autoSessionTitle: false,
+  // 空串 = 跟随当前会话模型/推理档位；显式配置时由标题扩展使用。
+  autoSessionTitleProvider: "",
+  autoSessionTitleModel: "",
+  autoSessionTitleThinkingLevel: "",
   // 忙碌时发送默认「插入当前回合」（对齐 pi 历史行为）；dsh 会话此前默认排队，
   // 统一后由本设置项决定，用户可在常用设置→会话中改回。
   busySendDelivery: "steer",
@@ -291,6 +300,9 @@ export class SettingsStore {
       if (typeof this.settings.autoSessionTitle !== "boolean") {
         this.settings.autoSessionTitle = defaultSettings.autoSessionTitle;
       }
+      this.settings.autoSessionTitleProvider = normalizeTitleSetting(parsed.autoSessionTitleProvider);
+      this.settings.autoSessionTitleModel = normalizeTitleSetting(parsed.autoSessionTitleModel);
+      this.settings.autoSessionTitleThinkingLevel = normalizeTitleSetting(parsed.autoSessionTitleThinkingLevel);
       // 兼容迁移：内置 CommitMono 字体已移除（打包瘦身），旧设置里的 "commit-mono"
       // 不再存在于 AppFontMonoMode 枚举，统一回退到系统等宽字体，避免类型漂移。
       // 注意：磁盘 JSON 是无类型的，旧值可能是已删除的枚举项，先拓宽为 string 再比较。
@@ -422,6 +434,9 @@ export class SettingsStore {
     // IPC 入参不可信：自动标题开关只接受布尔值，非法值保持原有设置。
     if ("autoSessionTitle" in safePatch && typeof safePatch.autoSessionTitle !== "boolean") {
       delete safePatch.autoSessionTitle;
+    }
+    for (const key of ["autoSessionTitleProvider", "autoSessionTitleModel", "autoSessionTitleThinkingLevel"] as const) {
+      if (key in safePatch) safePatch[key] = normalizeTitleSetting(safePatch[key]);
     }
     if ("projectIdeaRefinementThinkingLevel" in safePatch) {
       safePatch.projectIdeaRefinementThinkingLevel = normalizeProjectIdeaRefinementThinkingLevel(safePatch.projectIdeaRefinementThinkingLevel);

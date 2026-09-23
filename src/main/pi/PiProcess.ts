@@ -38,6 +38,9 @@ type PiProcessSettings = Pick<
   | "disabledPrompts"
   | "disableExtensionWhitelist"
   | "autoSessionTitle"
+  | "autoSessionTitleProvider"
+  | "autoSessionTitleModel"
+  | "autoSessionTitleThinkingLevel"
 >;
 
 type PiProcessLocator = Pick<
@@ -789,6 +792,11 @@ export class PiProcess extends EventEmitter {
     // 会话自动标题由 PiDeck 内置扩展在 agent_settled 后独立调用模型；
     // 显式注入 0/1，避免继承宿主环境中的同名变量。设置变更对新建/重启 Agent 生效。
     env.PIDECK_AUTO_SESSION_TITLE = this.settings?.autoSessionTitle === false ? "0" : "1";
+    env.PIDECK_AUTO_SESSION_TITLE_MODEL =
+      this.settings?.autoSessionTitleProvider?.trim() && this.settings.autoSessionTitleModel?.trim()
+        ? `${this.settings.autoSessionTitleProvider.trim()}/${this.settings.autoSessionTitleModel.trim()}`
+        : "";
+    env.PIDECK_AUTO_SESSION_TITLE_THINKING = this.settings?.autoSessionTitleThinkingLevel?.trim() ?? "";
 
     // spawn 前记录工作目录事实，仅用于「失败后还原真实原因」：
     // Windows 下 cwd 无效会被 libuv 报成 "spawn <cmd.exe> ENOENT"（实测复现），

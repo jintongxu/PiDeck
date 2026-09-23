@@ -14,6 +14,9 @@ test("temporary Windows builds inject a distinct identity and output directory",
   }
   assert.match(builderDevConfig, /productName: "PiDeck-Dev"/);
   assert.match(builderDevConfig, /appId: "com\.ayuayue\.pi-desktop-dev"/);
+  assert.match(builderDevConfig, /PiDeck-Dev-\$\{version\}-temporary/);
+  assert.match(devBuildScript, /rmSync\(outputDir, \{ recursive: true, force: true \}\)/);
+  assert.match(fastDevScript, /rmSync\(path\.join\(root, DEV_OUTPUT_DIR\), \{ recursive: true, force: true \}\)/);
 });
 
 test("temporary packaged builds never register the formal pideck protocol", () => {
@@ -21,7 +24,11 @@ test("temporary packaged builds never register the formal pideck protocol", () =
   assert.match(builderDevConfig, /protocols: \[\]/);
 });
 
-test("temporary windows builds are visibly labeled", () => {
+test("temporary windows builds are visibly labeled and use a distinct data identity", () => {
   assert.match(mainSource, /isDevBuild \? "PiDeck-Dev"/);
   assert.match(mainSource, /isDevBuild \? "PiDeck-Dev" : "PiDeck"/);
+  assert.match(mainSource, /DEFAULT_DEV_USER_DATA_NAME/);
+  assert.match(readFileSync("src/main/devIsolation.ts", "utf8"), /DEFAULT_DEV_USER_DATA_NAME = "pi-desktop-dev"/);
+  assert.match(mainSource, /com\.ayuayue\.pi-desktop-dev/);
+  assert.match(mainSource, /isDevBuild = !app\.isPackaged \|\| __PIDECK_DEV_BUILD__/);
 });

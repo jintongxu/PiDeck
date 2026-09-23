@@ -319,13 +319,14 @@ test("Chat section keeps an independent collapse control after the parent projec
   assert.match(chatSection, /onClick=\{\(\) => props\.controller\.toggleProject\(project\.id\)\}/);
   assert.match(chatSection, /title=\{collapsed \? t\("app\.projectExpand"\) : t\("app\.projectCollapse"\)\}/);
   assert.match(chatSection, /<ChevronsDownUp size=\{14\} aria-hidden="true" \/>/);
-  // 显式「+ 新建会话」按钮外露（最常用入口），匿名会话收进 ⋯ 项目菜单
+  // 普通会话与匿名会话都在 Chat 标题栏直接外露，避免为了临时提问再打开菜单。
   assert.match(chatSection, /aria-label=\{t\("app\.newNormalSession"\)\}/);
   assert.match(chatSection, /void props\.actions\.sessions\.createDraft\(project\.id\)/);
-  // 匿名/目录设置等低频操作集中在 ⋯ 完整项目菜单（openMenu kind: "project"）
+  assert.match(chatSection, /aria-label=\{t\("app\.newAnonymousSession"\)\}/);
+  assert.match(chatSection, /void props\.actions\.sessions\.createAnonymous\(project\.id\)/);
+  // 目录设置等低频操作集中在 ⋯ 完整项目菜单（openMenu kind: "project"）
   assert.match(chatSection, /openMenu\(\{ kind: "project", projectId: project\.id/);
   assert.match(chatSection, /aria-label=\{t\("sidebar\.moreActions"\)\}/);
-  assert.doesNotMatch(chatSection, /createAnonymous\(project\.id\)/);
   assert.doesNotMatch(chatSection, /changeChatPath/);
   // 新建 DSH 会话入口已收敛到会话内的后端选择器，Chat 标题栏不再提供独立机器人按钮
   assert.doesNotMatch(chatSection, /createDraftDsh\(project\.id\)/);

@@ -12,6 +12,8 @@ import { t, type TranslationKey } from "../i18n";
 const BUILT_IN_EXTENSION_DESC: Record<string, TranslationKey> = {
 	"pi-deck-request-size-recovery.ts": "config.builtInExtDesc.pi-deck-request-size-recovery",
 	"pi-deck-ask-question.ts": "config.builtInExtDesc.pi-deck-ask-question",
+	"pi-deck-maestro-auto-approve.ts": "config.builtInExtDesc.pi-deck-maestro-auto-approve",
+	"pi-deck-knowledge-adherence.ts": "config.builtInExtDesc.pi-deck-knowledge-adherence",
 	"pi-deck-nul-redirect-fix.ts": "config.builtInExtDesc.pi-deck-nul-redirect-fix",
 	"pi-deck-retry-no-body.ts": "config.builtInExtDesc.pi-deck-retry-no-body",
 	"pi-deck-security-gate.ts": "config.builtInExtDesc.pi-deck-security-gate",

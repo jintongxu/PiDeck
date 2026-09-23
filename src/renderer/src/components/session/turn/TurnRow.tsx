@@ -483,8 +483,6 @@ export const TurnRow = memo(
 						/>
 					</div>
 				))}
-				<span data-local-anchor={`answer-end:${run.id}`} aria-hidden="true" className="block h-0 w-0" />
-
 				{/* 操作栏 */}
 				{mergedText && !editing && (
 					<div className="flex min-h-6 items-center gap-1 opacity-55 transition-opacity hover:opacity-100 focus-within:opacity-100">
@@ -581,6 +579,9 @@ export const TurnRow = memo(
 						</span>
 					</div>
 				)}
+
+				{/* 右侧前进键按整轮最后一行置底，操作选项和耗时保持在视口内。 */}
+				<span data-local-anchor={`answer-end:${run.id}`} aria-hidden="true" className="block h-0 w-0" />
 
 			</div>
 		</article>

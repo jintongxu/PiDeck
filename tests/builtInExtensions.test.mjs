@@ -64,8 +64,8 @@ test("listActiveBuiltInExtensionPaths respects removedBuiltIn and missing files"
 		);
 		assert.equal(paths.length, 1);
 		assert.ok(String(paths[0]).endsWith("pi-deck-ask-question.ts"));
-		// 内置扩展清单随版本增长；Plan/Act 适配由独立 PiDeck 扩展提供。
-		assert.equal(BUILT_IN_EXTENSIONS.length, 11);
+		// 内置扩展清单随版本增长；Plan/Act 与知识适配由独立 PiDeck 扩展提供。
+		assert.equal(BUILT_IN_EXTENSIONS.length, 12);
 		assert.equal(BUILT_IN_EXTENSIONS.includes("pi-deck-goal-mode.ts"), false);
 		assert.ok(BUILT_IN_EXTENSIONS.includes("pi-deck-session-title.ts"));
 		assert.ok(BUILT_IN_EXTENSIONS.includes("pi-deck-trash-guard.ts"));

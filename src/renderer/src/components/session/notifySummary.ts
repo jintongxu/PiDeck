@@ -25,6 +25,7 @@
  * subagent_control_notice / subagent_supervisor_request：子代理控制与请求父代理介入。
  */
 export const NOTIFY_CUSTOM_TYPES: ReadonlySet<string> = new Set([
+	"pi-deck-knowledge-adherence",
 	"subagent-notify",
 	"subagent-notification",
 	"subagent_control_notice",

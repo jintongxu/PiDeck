@@ -125,6 +125,12 @@ export type AppSettings = {
 	 * 默认关闭以避免用户无感知地产生额外模型调用和 token 消耗；设置只在新建或重启 Agent 进程时注入，关闭不影响已有会话的主 agent。
 	 */
 	autoSessionTitle: boolean;
+	/** 自动生成会话名称使用的 provider；为空时跟随当前会话模型。 */
+	autoSessionTitleProvider: string;
+	/** 自动生成会话名称使用的模型 ID；为空时跟随当前会话模型。 */
+	autoSessionTitleModel: string;
+	/** 自动生成会话名称使用的推理强度；为空时使用模型默认档位。 */
+	autoSessionTitleThinkingLevel: string;
 	/**
 	 * Agent 忙碌时发送消息的默认投递行为。
 	 * "steer"=插入当前回合（模型在本次回合内尽快看到）；"followUp"=排队，当前回合结束后自动发送。

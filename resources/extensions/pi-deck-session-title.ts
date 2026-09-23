@@ -7,7 +7,7 @@
 
 import type { AgentMessage } from "@earendil-works/pi-agent-core";
 import { completeSimple } from "@earendil-works/pi-ai/compat";
-import type { AssistantMessage, Context } from "@earendil-works/pi-ai";
+import type { AssistantMessage, Context, SimpleStreamOptions } from "@earendil-works/pi-ai";
 import type {
 	ExtensionAPI,
 	ExtensionContext,
@@ -27,6 +27,7 @@ const MAX_TITLE_ATTEMPTS = 2;
 const TITLE_MAX_TOKENS = 512;
 /** 首轮预算被推理吃光时的升级预算：长思考模型至少还有一轮完整的正文空间。 */
 const TITLE_MAX_TOKENS_ESCALATED = 2048;
+type TitleThinkingLevel = "off" | "minimal" | "low" | "medium" | "high" | "xhigh" | "max";
 
 const TITLE_SYSTEM_PROMPT = `You generate a concise title for a coding assistant conversation.
 Return only one plain-text title on one line, with no explanation, quotes, Markdown, emoji, or "Title:" prefix.
@@ -318,6 +319,37 @@ async function withTimeout<T>(
 	}
 }
 
+function readConfiguredTitleModel(): { provider: string; modelId: string } | undefined {
+	const value = process.env.PIDECK_AUTO_SESSION_TITLE_MODEL?.trim() ?? "";
+	const separator = value.indexOf("/");
+	if (separator <= 0 || separator === value.length - 1) return undefined;
+	const provider = value.slice(0, separator).trim();
+	const modelId = value.slice(separator + 1).trim();
+	return provider && modelId ? { provider, modelId } : undefined;
+}
+
+function readConfiguredTitleThinkingLevel(): TitleThinkingLevel | undefined {
+	const value = process.env.PIDECK_AUTO_SESSION_TITLE_THINKING?.trim() ?? "";
+	switch (value) {
+		case "off":
+		case "minimal":
+		case "low":
+		case "medium":
+		case "high":
+		case "xhigh":
+		case "max":
+			return value;
+		default:
+			return undefined;
+	}
+}
+
+function resolveTitleModel(ctx: ExtensionContext): NonNullable<ExtensionContext["model"]> | undefined {
+	const configured = readConfiguredTitleModel();
+	if (!configured) return ctx.model;
+	return ctx.modelRegistry.find(configured.provider, configured.modelId) ?? ctx.model;
+}
+
 async function requestTitle(
 	model: NonNullable<ExtensionContext["model"]>,
 	input: TitleInput,
@@ -337,16 +369,19 @@ async function requestTitle(
 		// 两次尝试共享同一个 TITLE_TIMEOUT_MS 总预算：升级重发不会让旁路拖得更久。
 		for (const budget of [TITLE_MAX_TOKENS, TITLE_MAX_TOKENS_ESCALATED]) {
 			const remaining = Math.max(1, TITLE_TIMEOUT_MS - (Date.now() - startedAt));
+			const requestOptions: SimpleStreamOptions = {
+				apiKey: auth.apiKey,
+				headers: auth.headers,
+				env: auth.env,
+				signal: controller.signal,
+				maxTokens: budget,
+				maxRetries: 0,
+				timeoutMs: remaining,
+			};
+			const thinkingLevel = readConfiguredTitleThinkingLevel();
+			if (thinkingLevel && thinkingLevel !== "off") requestOptions.reasoning = thinkingLevel;
 			const response = await withTimeout(
-				Promise.resolve().then(() => completeSimple(titleModel, buildTitleContext(input), {
-					apiKey: auth.apiKey,
-					headers: auth.headers,
-					env: auth.env,
-					signal: controller.signal,
-					maxTokens: budget,
-					maxRetries: 0,
-					timeoutMs: remaining,
-				})),
+				Promise.resolve().then(() => completeSimple(titleModel, buildTitleContext(input), requestOptions)),
 				controller,
 				remaining,
 			);
@@ -423,11 +458,13 @@ export default function piDeckSessionTitle(pi: ExtensionAPI): void {
 		}
 		const freshReason = event.reason === "new" || event.reason === "startup";
 		eligible = enabled && freshReason && !hasConversation(branch) && !hasSessionName(pi);
-		if (eligible && ctx.model) primeAuth(ctx, ctx.model, false);
+		const titleModel = resolveTitleModel(ctx);
+		if (eligible && titleModel) primeAuth(ctx, titleModel, false);
 	});
 
 	pi.on("model_select", (_event, ctx) => {
-		if (enabled && eligible && ctx.model) primeAuth(ctx, ctx.model, true);
+		const titleModel = resolveTitleModel(ctx);
+		if (enabled && eligible && titleModel) primeAuth(ctx, titleModel, true);
 	});
 
 	pi.on("session_info_changed", (_event, _ctx) => {
@@ -452,9 +489,10 @@ export default function piDeckSessionTitle(pi: ExtensionAPI): void {
 	pi.on("agent_start", (_event, ctx) => {
 		// 用真实 agent run 作为重试边界，避免重复 settled 事件消耗标题请求次数。
 		agentRunGeneration += 1;
-		if (enabled && eligible && ctx.model) {
+		const titleModel = resolveTitleModel(ctx);
+		if (enabled && eligible && titleModel) {
 			// 首轮复用启动阶段的预热结果；标题失败后的下一轮强制重新解析凭据。
-			primeAuth(ctx, ctx.model, titleAttempts > 0);
+			primeAuth(ctx, titleModel, titleAttempts > 0);
 		}
 	});
 
@@ -472,7 +510,7 @@ export default function piDeckSessionTitle(pi: ExtensionAPI): void {
 		// prefer the live value at settle time and retain the startup snapshot as fallback.
 		const currentSessionId = readSessionId(ctx) ?? sessionId;
 		if (currentSessionId) sessionId = currentSessionId;
-		const model = ctx.model;
+		const model = resolveTitleModel(ctx);
 		if (!currentSessionId || !model) return;
 		const authPromise = primeAuth(ctx, model, false);
 

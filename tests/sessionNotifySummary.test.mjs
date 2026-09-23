@@ -65,7 +65,8 @@ test("空文本不抛错", () => {
 	assert.equal(summary.body, "");
 });
 
-test("白名单：只放通知类 customType，内部上下文注入不展示", () => {
+test("白名单：知识适配状态和其他通知可展示，内部上下文注入不展示", () => {
+	assert.equal(isNotifiableCustomType("pi-deck-knowledge-adherence"), true);
 	assert.equal(isNotifiableCustomType("subagent-notify"), true);
 	assert.equal(isNotifiableCustomType("subagent_control_notice"), true);
 	// 计划模式上下文注入（display:false，实测单会话 22 条）不能变成时间线噪声

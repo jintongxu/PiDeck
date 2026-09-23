@@ -2,8 +2,10 @@
  * PiDeck-owned RPC adapter for pi-maestro-flow Plan confirmation.
  *
  * RPC mode cannot render pi-maestro-flow's ctx.ui.custom() TUI panel. This
- * adapter replaces the model's plan-confirm call with PiDeck's standard
- * select/input UI, then re-enters the upstream `/plan approve` command.
+ * adapter uses PiDeck's standard select UI to choose an action, then supplies
+ * that decision to the original upstream plan-confirm call. Keeping approval
+ * inside one tool execution prevents a follow-up `/plan approve` turn from
+ * observing stale PlanStore state or a different handoff key.
  * PlanStore and Plan/Act state remain owned by pi-maestro-flow; this file never
  * registers a duplicate tool or edits the installed pi-maestro-flow package.
  */
@@ -20,21 +22,15 @@ const EXECUTE_DECISION = {
 	execution: { backend: "standalone" as const, context: "current" as const },
 };
 
-type PlanDecision = typeof EXECUTE_DECISION;
+type PlanDecision =
+	| typeof EXECUTE_DECISION
+	| { action: "continue" | "exit-plan" | "close" };
 
 export default function (pi: ExtensionAPI): void {
-	let executeApprovalPending = false;
+	let pendingDecision: PlanDecision | undefined;
 	let approvalInProgress = false;
-	let approveCommandPending = false;
+	let bridgedUi: object | undefined;
 	let latestPlanMarkdown = "";
-
-	function sendApproveCommand(): void {
-		approveCommandPending = true;
-		pi.sendUserMessage("/plan approve", {
-			deliverAs: "followUp",
-			expandPromptTemplates: true,
-		});
-	}
 
 	// Show the latest decision-complete Plan in PiDeck's existing widget lane.
 	// This is display-only; Maestro remains the sole Plan state/Store owner.
@@ -50,48 +46,47 @@ export default function (pi: ExtensionAPI): void {
 		);
 	});
 
-	// Native PiDeck approval: select/input are supported by the RPC protocol,
-	// unlike the upstream TUI custom component.
+	// Native PiDeck approval: select is supported by the RPC protocol, unlike
+	// the upstream TUI custom component. Do not block the tool: the upstream
+	// plan-confirm implementation must perform the approval commit itself.
 	pi.on("tool_call", async (event, ctx) => {
-		if (event.toolName !== "plan-confirm" || approvalInProgress) return;
+		if (event.toolName !== "plan-confirm") return;
+		if (approvalInProgress) return { block: true, terminate: true };
 		approvalInProgress = true;
-		const choice = await ctx.ui.select(
-			"Plan confirmation / 计划审批",
-			PLAN_ACTIONS,
-		);
-		if (choice === PLAN_ACTIONS[0]) {
-			executeApprovalPending = true;
-			sendApproveCommand();
-		} else if (choice === PLAN_ACTIONS[1]) {
-			const feedback = await ctx.ui.input(
-				"Continue discussing the Plan / 继续讨论",
-				"Enter feedback or a question",
+		try {
+			const choice = await ctx.ui.select(
+				"Plan confirmation / 计划审批",
+				PLAN_ACTIONS,
 			);
-			if (feedback?.trim()) {
-				pi.sendUserMessage(feedback.trim(), { deliverAs: "followUp" });
-			}
-		} else if (choice === PLAN_ACTIONS[2]) {
-			pi.sendUserMessage("/plan exit", {
-				deliverAs: "followUp",
-				expandPromptTemplates: true,
-			});
+			pendingDecision = choice === PLAN_ACTIONS[0]
+				? EXECUTE_DECISION
+				: choice === PLAN_ACTIONS[1]
+					? { action: "continue" }
+					: choice === PLAN_ACTIONS[2]
+						? { action: "exit-plan" }
+						: { action: "close" };
+		} finally {
+			approvalInProgress = false;
 		}
-		approvalInProgress = false;
-		return { block: true, terminate: true };
 	});
 
-	// `/plan approve` is still handled by the upstream command. Its reviewPlan()
-	// calls custom(); return the Execute decision selected above.
+	// The upstream /plan implementation still owns reviewPlan(), PlanStore
+	// approval, Act-mode transition, and handoff-key generation. Only its custom
+	// UI result is replaced, so all of those operations remain one atomic flow.
 	pi.on("session_start", (_event, ctx) => {
 		if (ctx.mode !== "rpc") return;
 		const ui = ctx.ui;
-		Reflect.set(ui, "custom", async () => {
-			if (!approveCommandPending) return undefined;
-			approveCommandPending = false;
-			if (!executeApprovalPending) return undefined;
-			executeApprovalPending = false;
-			return EXECUTE_DECISION satisfies PlanDecision;
+		if (bridgedUi === ui) return;
+		const originalCustom = ui.custom;
+		Reflect.set(ui, "custom", async (factory: unknown, options?: unknown): Promise<unknown> => {
+			const decision = pendingDecision;
+			if (decision) {
+				pendingDecision = undefined;
+				return decision;
+			}
+			return Reflect.apply(originalCustom, ui, [factory, options]);
 		});
+		bridgedUi = ui;
 	});
 
 	pi.on("tool_execution_end", (event, ctx) => {
@@ -104,14 +99,14 @@ export default function (pi: ExtensionAPI): void {
 		}
 		if (event.toolName === "plan-confirm") {
 			approvalInProgress = false;
+			pendingDecision = undefined;
 			ctx.ui.setWidget(PLAN_WIDGET_KEY, undefined);
 		}
 	});
 
 	pi.on("session_shutdown", (_event, ctx) => {
-		executeApprovalPending = false;
 		approvalInProgress = false;
-		approveCommandPending = false;
+		pendingDecision = undefined;
 		latestPlanMarkdown = "";
 		ctx.ui.setWidget(PLAN_WIDGET_KEY, undefined);
 	});

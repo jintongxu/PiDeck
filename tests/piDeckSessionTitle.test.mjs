@@ -6,7 +6,7 @@ import vm from "node:vm";
 
 const extensionPath = "resources/extensions/pi-deck-session-title.ts";
 
-function compileExtension({ enabled = true, completeSimple }) {
+function compileExtension({ enabled = true, completeSimple, titleModel, titleThinking }) {
 	const source = readFileSync(extensionPath, "utf8");
 	const output = ts.transpileModule(source, {
 		compilerOptions: {
@@ -24,7 +24,13 @@ function compileExtension({ enabled = true, completeSimple }) {
 			if (specifier === "@earendil-works/pi-ai/compat") return { completeSimple };
 			return {};
 		},
-		process: { env: { PIDECK_AUTO_SESSION_TITLE: enabled ? "1" : "0" } },
+		process: {
+			env: {
+				PIDECK_AUTO_SESSION_TITLE: enabled ? "1" : "0",
+				...(titleModel ? { PIDECK_AUTO_SESSION_TITLE_MODEL: titleModel } : {}),
+				...(titleThinking ? { PIDECK_AUTO_SESSION_TITLE_THINKING: titleThinking } : {}),
+			},
+		},
 		console,
 		AbortController,
 		setTimeout,
@@ -67,6 +73,8 @@ function createHarness({
 	authBaseUrl,
 	hasModel = true,
 	authResolver,
+	titleModel,
+	titleThinking,
 } = {}) {
 	let branch = entries;
 	let sessionId = "session-1";
@@ -88,6 +96,7 @@ function createHarness({
 		sessionManager,
 		model: hasModel ? { provider: "test-provider", id: "test-model" } : undefined,
 		modelRegistry: {
+			find: (provider, modelId) => ({ provider, id: modelId, api: "test-api" }),
 			getApiKeyAndHeaders: authResolver ?? (async () => ({
 				ok: true,
 				apiKey: "test-key",
@@ -101,7 +110,7 @@ function createHarness({
 		completeCalls.push({ model, titleContext, options });
 		return nextCompletion();
 	};
-	const extension = compileExtension({ enabled, completeSimple });
+	const extension = compileExtension({ enabled, completeSimple, titleModel, titleThinking });
 	const pi = {
 		on(event, handler) {
 			handlers.set(event, handler);
@@ -234,6 +243,18 @@ test("两次预算都被推理吃光时放弃命名，同一轮不重复重发",
 	await flushAsyncWork();
 	assert.equal(harness.completeCalls.length, 3);
 	assert.deepEqual(harness.setNames, ["重试成功"]);
+});
+
+test("uses configured title model and reasoning level for the independent request", async () => {
+	const entries = freshBranch({ user: "配置标题模型" });
+	const harness = createHarness({ entries, titleModel: "title-provider/title-model", titleThinking: "high" });
+	await startFresh(harness, entries);
+	await harness.emit("agent_settled");
+	await flushAsyncWork();
+	assert.equal(harness.completeCalls.length, 1);
+	assert.equal(harness.completeCalls[0].model.provider, "title-provider");
+	assert.equal(harness.completeCalls[0].model.id, "title-model");
+	assert.equal(harness.completeCalls[0].options.reasoning, "high");
 });
 
 test("uses a credential-provided base URL for the independent request", async () => {

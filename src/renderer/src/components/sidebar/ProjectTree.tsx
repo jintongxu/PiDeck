@@ -1,4 +1,4 @@
-import { ChevronRight, ChevronsDownUp, Ellipsis, Filter, Folder, FolderOpen, FolderPlus, Lightbulb, Plus, RefreshCw } from "lucide-react";
+import { ChevronRight, ChevronsDownUp, Ellipsis, Filter, Folder, FolderOpen, FolderPlus, HatGlasses, Lightbulb, Plus, RefreshCw } from "lucide-react";
 import type { DragEvent } from "react";
 import { useAtomValue } from "jotai";
 import type { Project, WorktreeEntry } from "../../../../shared/types";
@@ -366,6 +366,17 @@ export function ProjectTree(props: {
               onClick={() => void props.actions.sessions.createDraft(project.id)}
             >
               <Plus className="size-3.5" aria-hidden="true" />
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-muted hover:text-foreground"
+              aria-label={t("app.newAnonymousSession")}
+              title={t("app.newAnonymousSession")}
+              onClick={() => void props.actions.sessions.createAnonymous(project.id)}
+            >
+              <HatGlasses className="size-3.5" aria-hidden="true" />
             </Button>
             {/* Chat 无父项目行，折叠入口必须外露，否则展开后无法从标题栏恢复。 */}
             <Button

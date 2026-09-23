@@ -14,6 +14,7 @@ export const BUILT_IN_EXTENSIONS = [
 	"pi-deck-request-size-recovery.ts",
 	"pi-deck-ask-question.ts",
 	"pi-deck-maestro-auto-approve.ts",
+	"pi-deck-knowledge-adherence.ts",
 	"pi-deck-nul-redirect-fix.ts",
 	"pi-deck-retry-no-body.ts",
 	"pi-deck-security-gate.ts",

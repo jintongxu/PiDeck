@@ -322,8 +322,12 @@ export type ConfigPaneProps = {
 	focusProvider?: string;
 	projectIdeaRefinementModel?: { provider: string; modelId: string };
 	projectIdeaRefinementThinkingLevel?: string;
+	autoSessionTitleModel?: { provider: string; modelId: string };
+	autoSessionTitleThinkingLevel?: string;
 	onProjectIdeaRefinementModelChange?: (model: { provider: string; modelId: string } | null) => void;
 	onProjectIdeaRefinementThinkingLevelChange?: (level: string) => void;
+	onAutoSessionTitleModelChange?: (model: { provider: string; modelId: string } | null) => void;
+	onAutoSessionTitleThinkingLevelChange?: (level: string) => void;
 	/** 深链：打开时落在的后端分页（DSH 配置 / Pi 管理）；缺省保持上次位置。 */
 	focusBackendPane?: "dsh" | "pi";
 	/** 嵌入设置窗口时，先提交外层 AppSettings 草稿，再保存配置管理当前页。 */
@@ -345,7 +349,7 @@ export type ConfigPaneProps = {
  * 不包错误边界——宿主 SettingsModal 的 ErrorBoundary 已兜底整个窗口。
  */
 export const ConfigPane = forwardRef<ConfigPaneHandle, ConfigPaneProps>(
-	function ConfigPane({ onClose, onSaved, projectId, projectKind, projectName, projects, resourceOnly, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, projectIdeaRefinementThinkingLevel, onProjectIdeaRefinementModelChange, onProjectIdeaRefinementThinkingLevelChange, onBeforeSaveCurrent, onStateChange, onRequestClose }, ref) {
+	function ConfigPane({ onClose, onSaved, projectId, projectKind, projectName, projects, resourceOnly, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, projectIdeaRefinementThinkingLevel, autoSessionTitleModel, autoSessionTitleThinkingLevel, onProjectIdeaRefinementModelChange, onProjectIdeaRefinementThinkingLevelChange, onAutoSessionTitleModelChange, onAutoSessionTitleThinkingLevelChange, onBeforeSaveCurrent, onStateChange, onRequestClose }, ref) {
 		return (
 			<ConfigModalContent
 				open
@@ -361,8 +365,12 @@ export const ConfigPane = forwardRef<ConfigPaneHandle, ConfigPaneProps>(
 				focusBackendPane={focusBackendPane}
 				projectIdeaRefinementModel={projectIdeaRefinementModel}
 				projectIdeaRefinementThinkingLevel={projectIdeaRefinementThinkingLevel}
+				autoSessionTitleModel={autoSessionTitleModel}
+				autoSessionTitleThinkingLevel={autoSessionTitleThinkingLevel}
 				onProjectIdeaRefinementModelChange={onProjectIdeaRefinementModelChange}
 				onProjectIdeaRefinementThinkingLevelChange={onProjectIdeaRefinementThinkingLevelChange}
+				onAutoSessionTitleModelChange={onAutoSessionTitleModelChange}
+				onAutoSessionTitleThinkingLevelChange={onAutoSessionTitleThinkingLevelChange}
 				onBeforeSaveCurrent={onBeforeSaveCurrent}
 				embedded
 				paneRef={ref}
@@ -451,8 +459,12 @@ type ConfigModalContentProps = ConfigModalProps & {
 	/** 项目想法整理模型设置由配置管理 Models 页承载。 */
 	projectIdeaRefinementModel?: { provider: string; modelId: string };
 	projectIdeaRefinementThinkingLevel?: string;
+	autoSessionTitleModel?: { provider: string; modelId: string };
+	autoSessionTitleThinkingLevel?: string;
 	onProjectIdeaRefinementModelChange?: (model: { provider: string; modelId: string } | null) => void;
 	onProjectIdeaRefinementThinkingLevelChange?: (level: string) => void;
+	onAutoSessionTitleModelChange?: (model: { provider: string; modelId: string } | null) => void;
+	onAutoSessionTitleThinkingLevelChange?: (level: string) => void;
 	/** 嵌入设置窗口时，先提交外层 AppSettings 草稿，再保存配置管理当前页。 */
 	onBeforeSaveCurrent?: () => Promise<boolean>;
 	/** 嵌入模式：不渲染 Dialog 外壳与标题栏按钮（宿主提供窗口），自身仍维护全部状态/保存/关闭确认逻辑 */
@@ -469,7 +481,7 @@ type ConfigModalContentProps = ConfigModalProps & {
 };
 
 function ConfigModalContent(props: ConfigModalContentProps) {
-	const { open, onClose, onSaved, projectId, projectKind, projectName, projects = [], resourceOnly = false, embedded, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, projectIdeaRefinementThinkingLevel = "", onProjectIdeaRefinementModelChange, onProjectIdeaRefinementThinkingLevelChange, onBeforeSaveCurrent } = props;
+	const { open, onClose, onSaved, projectId, projectKind, projectName, projects = [], resourceOnly = false, embedded, focusConfigTab, focusProvider, focusBackendPane, projectIdeaRefinementModel, projectIdeaRefinementThinkingLevel = "", autoSessionTitleModel, autoSessionTitleThinkingLevel = "", onProjectIdeaRefinementModelChange, onProjectIdeaRefinementThinkingLevelChange, onAutoSessionTitleModelChange, onAutoSessionTitleThinkingLevelChange, onBeforeSaveCurrent } = props;
 	/**
 	 * 资源作用域是派生值而非可切换 state：
 	 * - 主配置页固定 global（全局安装 + 用户 ~/.pi 自装 + PiDeck 内置）；项目级技能/扩展/提示词
@@ -498,7 +510,16 @@ function ConfigModalContent(props: ConfigModalContentProps) {
 	const [ideaModelsReport, setIdeaModelsReport] = useState<ModelListReport | null>(null);
 	const [ideaModelsRefreshing, setIdeaModelsRefreshing] = useState(false);
 	const [ideaModelPickerOpen, setIdeaModelPickerOpen] = useState(false);
+	const [titleModelPickerOpen, setTitleModelPickerOpen] = useState(false);
 	const selectedIdeaModel = ideaModels.find((model) => model.provider === projectIdeaRefinementModel?.provider && model.id === projectIdeaRefinementModel.modelId);
+	const selectedTitleModel = ideaModels.find((model) => model.provider === autoSessionTitleModel?.provider && model.id === autoSessionTitleModel.modelId);
+	const resolvedTitleThinkingLevels = resolveThinkingPickerLevels({
+		backend: "pi",
+		cachedPiLevels: selectedTitleModel?.thinkingLevels,
+	});
+	const titleThinkingLevels = autoSessionTitleThinkingLevel && !resolvedTitleThinkingLevels.some((level) => level.value === autoSessionTitleThinkingLevel)
+		? [...resolvedTitleThinkingLevels, { value: autoSessionTitleThinkingLevel, label: autoSessionTitleThinkingLevel }]
+		: resolvedTitleThinkingLevels;
 	const resolvedIdeaThinkingLevels = resolveThinkingPickerLevels({
 		backend: "pi",
 		cachedPiLevels: selectedIdeaModel?.thinkingLevels,
@@ -515,6 +536,12 @@ function ConfigModalContent(props: ConfigModalContentProps) {
 			onProjectIdeaRefinementThinkingLevelChange?.("");
 		}
 	}, [onProjectIdeaRefinementThinkingLevelChange, projectIdeaRefinementThinkingLevel, selectedIdeaModel]);
+	useEffect(() => {
+		if (!autoSessionTitleThinkingLevel || !selectedTitleModel?.thinkingLevels) return;
+		if (!selectedTitleModel.thinkingLevels.includes(autoSessionTitleThinkingLevel)) {
+			onAutoSessionTitleThinkingLevelChange?.("");
+		}
+	}, [autoSessionTitleThinkingLevel, onAutoSessionTitleThinkingLevelChange, selectedTitleModel]);
 	useEffect(() => {
 		if (!open || section !== "config" || tab !== "models") return;
 		void desktopApi.projects.listModelsReport(undefined, false).then((report) => {
@@ -2687,6 +2714,26 @@ function ConfigModalContent(props: ConfigModalContentProps) {
 					{configDiagnosticBlock}
 					{!loading && (
 						<>
+						<div className="mb-4 rounded-lg border border-border-subtle bg-card p-4">
+							<div className="mb-1 text-sm font-medium">{t("settings.autoSessionTitleModel")}</div>
+							<p className="mb-3 text-xs text-muted-foreground">{t("settings.autoSessionTitleModelDesc")}</p>
+							<Button variant="outline" className="w-full justify-start font-mono text-xs" onClick={() => setTitleModelPickerOpen(true)}>
+								{autoSessionTitleModel?.provider && autoSessionTitleModel.modelId
+									? `${autoSessionTitleModel.provider}/${autoSessionTitleModel.modelId}`
+									: t("settings.autoSessionTitleModelUnset")}
+							</Button>
+							<div className="mt-3 grid gap-1.5">
+								<label className="text-xs font-medium" htmlFor="auto-session-title-thinking-level">{t("settings.autoSessionTitleThinkingLevel")}</label>
+								<Select value={autoSessionTitleThinkingLevel || "__model_default__"} onValueChange={(value) => onAutoSessionTitleThinkingLevelChange?.(value === "__model_default__" ? "" : value)}>
+									<SelectTrigger id="auto-session-title-thinking-level" className="h-8 text-xs"><SelectValue /></SelectTrigger>
+									<SelectContent>
+										<SelectItem value="__model_default__" className="text-xs">{t("settings.autoSessionTitleThinkingLevelDefault")}</SelectItem>
+										{titleThinkingLevels.map((level) => <SelectItem key={level.value} value={level.value} className="text-xs">{level.labelKey ? t(level.labelKey) : (level.label ?? level.value)}</SelectItem>)}
+									</SelectContent>
+								</Select>
+							</div>
+							{titleModelPickerOpen && <ModelPicker models={ideaModels} report={ideaModelsReport} refreshing={ideaModelsRefreshing} onRefresh={refreshIdeaModels} current={autoSessionTitleModel} favoriteModels={[]} onClose={() => setTitleModelPickerOpen(false)} onPick={(model) => { onAutoSessionTitleModelChange?.({ provider: model.provider, modelId: model.id }); if (autoSessionTitleThinkingLevel && model.thinkingLevels && !model.thinkingLevels.includes(autoSessionTitleThinkingLevel)) onAutoSessionTitleThinkingLevelChange?.(""); setTitleModelPickerOpen(false); }} />}
+						</div>
 						<div className="mb-4 rounded-lg border border-border-subtle bg-card p-4">
 							<div className="mb-1 text-sm font-medium">{t("settings.projectIdeaRefinementModel")}</div>
 							<p className="mb-3 text-xs text-muted-foreground">{t("settings.projectIdeaRefinementModelDesc")}</p>

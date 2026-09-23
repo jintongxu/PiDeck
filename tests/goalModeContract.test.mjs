@@ -65,7 +65,9 @@ test("PiDeck auto-plan execution uses a PiDeck-owned RPC custom UI adapter", () 
 	assert.match(adapter, /event\.toolName === "plan-confirm"/);
 	assert.match(adapter, /pideck-plan-confirm/);
 	assert.match(adapter, /setWidget/);
-	assert.match(adapter, /sendUserMessage\("\/plan approve"/);
+	assert.match(adapter, /Reflect\.set\(ui, "custom"/);
+	assert.match(adapter, /pendingDecision/);
+	assert.doesNotMatch(adapter, /sendUserMessage\("\/plan approve"/);
 	assert.doesNotMatch(adapter, /autoApproveNextCustom/);
 	assert.doesNotMatch(adapter, /registerTool/);
 	assert.doesNotMatch(agentManager, /PIDECK_MAESTRO_PLAN_AUTO_OFF/);

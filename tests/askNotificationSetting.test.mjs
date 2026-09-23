@@ -37,6 +37,26 @@ test("autoSessionTitle 四处默认关闭且设置说明提示额外 token 消�
 	assert.match(en, /settings\.autoSessionTitleDesc[\s\S]{0,260}tokens/);
 });
 
+test("会话名称模型设置贯穿设置、PiProcess 与标题扩展", () => {
+	const settings = readFileSync("src/shared/types/settings.ts", "utf8");
+	const store = readFileSync("src/main/settings/SettingsStore.ts", "utf8");
+	const config = readFileSync("src/renderer/src/ConfigModal.tsx", "utf8");
+	const settingsModal = readFileSync("src/renderer/src/components/app/SettingsModal.tsx", "utf8");
+	const process = readFileSync("src/main/pi/PiProcess.ts", "utf8");
+	const extension = readFileSync("resources/extensions/pi-deck-session-title.ts", "utf8");
+	assert.match(settings, /autoSessionTitleProvider: string/);
+	assert.match(settings, /autoSessionTitleModel: string/);
+	assert.match(settings, /autoSessionTitleThinkingLevel: string/);
+	assert.match(store, /normalizeTitleSetting\(parsed\.autoSessionTitleProvider\)/);
+	assert.match(config, /settings\.autoSessionTitleModel/);
+	assert.match(config, /onAutoSessionTitleThinkingLevelChange/);
+	assert.match(settingsModal, /autoSessionTitleProvider/);
+	assert.match(process, /PIDECK_AUTO_SESSION_TITLE_MODEL/);
+	assert.match(process, /PIDECK_AUTO_SESSION_TITLE_THINKING/);
+	assert.match(extension, /PIDECK_AUTO_SESSION_TITLE_MODEL/);
+	assert.match(extension, /requestOptions\.reasoning/);
+});
+
 test("AgentManager 的 Ask 通知改由独立开关门控，与通用通知解耦", () => {
 	const source = readFileSync("src/main/pi/AgentManager.ts", "utf8");
 	// 门控条件必须读新开关，而不是 enableNotifications

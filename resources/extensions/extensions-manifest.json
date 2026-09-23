@@ -1,8 +1,8 @@
 {
   "schemaVersion": 1,
   "version": "1.0.0",
-  "bundleSha256": "ea6e3cdc78cd9685658bd499a975e64560309f8d6701b8c6e0518e221cc5ad35",
-  "fileCount": 12,
+  "bundleSha256": "929c6f676a35c9424d4248f00f1b4cdabb987e7d0f2a4ca140071b8470b49177",
+  "fileCount": 13,
   "files": [
     {
       "name": "pi-deck-ask-question.ts",
@@ -10,9 +10,14 @@
       "bytes": 20623
     },
     {
+      "name": "pi-deck-knowledge-adherence.ts",
+      "sha256": "28fcda0ecbf4998717973b0efbcead958ab0eb317c108665cf6fa8d74728e1c4",
+      "bytes": 10979
+    },
+    {
       "name": "pi-deck-maestro-auto-approve.ts",
-      "sha256": "400b3442c7b0922cc85f508584085b1ad7c9199dec755d286a27fa284365e633",
-      "bytes": 3835
+      "sha256": "8759c1cb3b72641248a2f97bc538cda44a61561781e27b3a0773b4175bc0f8a4",
+      "bytes": 3894
     },
     {
       "name": "pi-deck-nul-redirect-fix.ts",
@@ -36,8 +41,8 @@
     },
     {
       "name": "pi-deck-session-title.ts",
-      "sha256": "414334d5c18f2f0a069151111453fce2d52258293ba569fd4791bb475a40f321",
-      "bytes": 18558
+      "sha256": "0c1c02253bc77cb8199f3fbc8955c9afd4e9ab405706fc5622882cc7e984c9ae",
+      "bytes": 20091
     },
     {
       "name": "pi-deck-subagents.ts",

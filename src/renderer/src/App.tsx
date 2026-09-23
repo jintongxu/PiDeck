@@ -670,6 +670,9 @@ export function App() {
     sessionTabOpenMode: "preview",
     // 与 main SettingsStore 默认一致：标题生成默认关闭，避免首轮结束后无感知消耗 token
     autoSessionTitle: false,
+    autoSessionTitleProvider: "",
+    autoSessionTitleModel: "",
+    autoSessionTitleThinkingLevel: "",
     // 与 main SettingsStore 默认一致：忙碌时发送默认「插入当前回合」
     busySendDelivery: "steer",
     enableGitManagement: true,

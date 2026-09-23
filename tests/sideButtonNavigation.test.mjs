@@ -60,6 +60,7 @@ test("timeline jump alignment places the answer tail at the viewport bottom", ()
         resolveAutoExpandThreshold: (height) => Math.max(120, Math.round(height * 0.4)),
       },
       "./timeline/scrollHistoryPolicy": {},
+      "./timeline/historyScrollConstants": { HISTORY_AUTO_LOAD_THRESHOLD: 8 },
       "../components/session/timeline/turnRenderWindow": {
         TIMELINE_MOUNTED_TURN_LIMIT: 3,
         TIMELINE_SCROLLED_TURN_LIMIT: 3,
@@ -140,5 +141,8 @@ test("TurnRow handles browser thumb clicks through the shared jump mapping", () 
   assert.match(surfaceSource, /data-local-anchor=\{`question:\$\{message\.id\}`\}/);
   assert.match(source, /data-run-id=\{run\.id\}/);
   assert.match(source, /data-local-anchor=\{`answer-end:\$\{run\.id\}`\}/);
+  const answerEndIndex = source.indexOf("data-local-anchor={`answer-end:${run.id}`}");
+  const durationIndex = source.indexOf("{/* 尾部耗时:");
+  assert.ok(answerEndIndex > durationIndex, "右侧键跳锚点必须位于尾部耗时之后，保证最下面一行置底");
   assert.match(source, /prev\.onJumpToMessage === next\.onJumpToMessage/);
 });
