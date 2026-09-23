@@ -533,8 +533,10 @@ export class AgentManager {
 	private readonly notifiedAskAgents = new Set<string>();
 	/** 已发送 abort 系统通知的 agent；同一轮 abort/迟到事件只通知一次。 */
 	private readonly notifiedAbortAgents = new Set<string>();
-	/** 已发送错误系统通知的 agent；同一轮错误/迟到事件只通知一次。 */
+	/** 已发送错误系统通知的 agent；同一轮可恢复错误/迟到事件只通知一次。 */
 	private readonly notifiedErrorAgents = new Set<string>();
+	/** 已发送“错误导致当前响应中断”系统通知的 agent；同一轮迟到事件只通知一次。 */
+	private readonly notifiedInterruptedAgents = new Set<string>();
 	/** 待处理的项目信任确认请求。key 为 requestId，用于在 Agent 启动前等待用户的信任决策。 */
 	private readonly pendingTrustRequests = new Map<string, { resolve: (choice: ProjectTrustChoice) => void }>();
 	private wslEnvironment: WslEnvironment | null = null;
@@ -1713,6 +1715,7 @@ export class AgentManager {
 			this.addLocalizedMessage(id, "error", "diagnostic.agentStartFailed", "Pi RPC 启动失败。", {
 				debugDetails: this.buildStartupFailureMessage(rawMessage, failedProcess?.getDiagnostics() ?? null),
 			});
+			this.notifyAgentInterrupted(id, rawMessage);
 			this.emitState();
 			return tab;
 		}
@@ -1843,6 +1846,7 @@ export class AgentManager {
 			this.addLocalizedMessage(id, "error", "diagnostic.agentStartFailed", "Pi RPC 启动失败。", {
 				debugDetails: this.buildStartupFailureMessage(rawMessage, failedProcess?.getDiagnostics() ?? null),
 			});
+			this.notifyAgentInterrupted(id, rawMessage);
 		}
 
 		this.emitState();
@@ -1933,6 +1937,7 @@ export class AgentManager {
 				"diagnostic.agentStopped",
 				errorMessage,
 			);
+			this.notifyAgentInterrupted(input.agentId, errorMessage);
 			// 进程已退出但 tab 仍是旧状态：用户发送被拒是「状态非正常」的触发点之一。
 			// 进程 exit 事件另有「Pi process exit」日志，这里补记录发送动作被拒时的
 			// 状态快照与退出码，便于确认置 error 的确切时机与原因。
@@ -2095,6 +2100,7 @@ export class AgentManager {
 			const errorMessage = "Agent 进程已停止，请重启 Agent 后重试";
 			runtime.tab.status = "error";
 			this.addLocalizedMessage(agentId, "error", "diagnostic.agentStopped", errorMessage);
+			this.notifyAgentInterrupted(agentId, errorMessage);
 			// 与 sendPrompt 同款留痕：!/!! 命令被拒时记下进程诊断快照，
 			// 避免「终端命令无效」在 applog 里无迹可寻。
 			const diag = runtime.process.getDiagnostics() ?? null;
@@ -3582,6 +3588,7 @@ export class AgentManager {
 		this.notifiedAskAgents.delete(agentId);
 		this.notifiedAbortAgents.delete(agentId);
 		this.notifiedErrorAgents.delete(agentId);
+		this.notifiedInterruptedAgents.delete(agentId);
 		this.abortedDuringAsk.delete(agentId);
 		this.pendingAbortEscalations.delete(agentId);
 		this.lastAbortAtByAgent.delete(agentId);
@@ -4491,6 +4498,7 @@ export class AgentManager {
 			this.addLocalizedMessage(agentId, "error", "diagnostic.runtimeError", "Agent 运行时发生错误。", {
 				debugDetails: this.buildStartupFailureMessage(message, piProcess.getDiagnostics()),
 			});
+			this.notifyAgentInterrupted(agentId, message);
 			this.emitState();
 		});
 	}
@@ -4568,6 +4576,7 @@ export class AgentManager {
 						"diagnostic.processReconnectFailed",
 						"Agent 进程意外退出，自动重连失败",
 					);
+					this.notifyAgentInterrupted(agentId, "Agent 进程意外退出，自动重连失败");
 					this.clearAgentState(agentId);
 					this.emitState();
 				});
@@ -4607,24 +4616,25 @@ export class AgentManager {
 						"diagnostic.processReconnectFailed",
 						"Agent 进程意外退出，自动重连失败",
 					);
+					this.notifyAgentInterrupted(agentId, "Agent 进程意外退出，自动重连失败");
 					this.clearAgentState(agentId);
 					this.emitState();
 				});
 			return;
 		}
 		tab.status = "closed";
-		// 非 0 退出且还没写过错误卡时，补一条可排查信息（避免用户只看到 closed）。
-		if (payload.code !== 0 && payload.code !== null) {
+		// 非正常退出且还没写过错误卡时，补一条可排查信息（避免用户只看到 closed）。
+		const abnormalExit = (payload.code !== null && payload.code !== 0) || payload.signal !== null;
+		if (abnormalExit) {
 			const runtime = this.agents.get(agentId);
 			const diag = runtime?.process.getDiagnostics() ?? null;
+			const interruptionMessage = `pi 进程退出 code=${payload.code}${payload.signal ? ` signal=${payload.signal}` : ""}`;
 			this.addMessage(
 				agentId,
 				"error",
-				this.buildStartupFailureMessage(
-					`pi 进程退出 code=${payload.code}${payload.signal ? ` signal=${payload.signal}` : ""}`,
-					diag,
-				),
+				this.buildStartupFailureMessage(interruptionMessage, diag),
 			);
+			this.notifyAgentInterrupted(agentId, interruptionMessage);
 		}
 		// 最终停止（无重连路径）：统一清理该 agent 的运行态键，避免慢泄漏
 		this.clearAgentState(agentId);
@@ -4738,6 +4748,13 @@ export class AgentManager {
 			return;
 		}
 		runtime.tab.status = "closed";
+		const abnormalExit = (payload.code !== null && payload.code !== 0) || payload.signal !== null;
+		if (abnormalExit) {
+			this.notifyAgentInterrupted(
+				agentId,
+				`pi 进程退出 code=${payload.code}${payload.signal ? ` signal=${payload.signal}` : ""}`,
+			);
+		}
 		// 最终停止（无重连路径）：统一清理该 agent 的运行态键。
 		// 异常退出（非 0 码）与正常退出在此汇合，warn 记录退出码便于与 exit 事件区分。
 		void this.appLogger?.warn("agent", "Agent process exited; no reconnect (reattach path)", {
@@ -4933,6 +4950,7 @@ export class AgentManager {
 			this.notifiedAskAgents.delete(agentId);
 			this.notifiedAbortAgents.delete(agentId);
 			this.notifiedErrorAgents.delete(agentId);
+			this.notifiedInterruptedAgents.delete(agentId);
 			this.openAgentStream(agentId);
 			this.setAgentTurnActive(agentId, true);
 			// rewind 回合计数：每轮 run 递增一次，供文件自动打点标记 turnIndex。
@@ -4996,6 +5014,7 @@ export class AgentManager {
 				runtime.tab.status = "error";
 				const reason = typed.finalError ?? typed.errorMessage ?? "API 请求失败";
 				this.addMessage(agentId, "error", `请求失败：${String(reason)}`);
+				this.notifyAgentInterrupted(agentId, String(reason));
 				// 自动重试最终失败：原因只写会话气泡无法离线排查，这里同步留痕 applog。
 				// 记录剩余重试次数与最终错误原文，供 Issue 排查 API 可用性/配额问题。
 				void this.appLogger?.error("agent", "Auto retry exhausted", {
@@ -5162,7 +5181,11 @@ export class AgentManager {
 					this.notifyAgentAborted(agentId);
 				} else {
 					this.addDetailedErrorMessage(agentId, String(errorMsg));
-					this.notifyAgentError(agentId, String(errorMsg));
+					// 活着的 runtime 中，策略拒绝只是可恢复的回复级错误；若进程同时已退出，
+					// 则仍属于错误导致的中断，必须发出中断通知。
+					if (!providerPromptRejected || !runtime?.process.isRunning()) {
+						this.notifyAgentInterrupted(agentId, String(errorMsg));
+					}
 				}
 				// 策略拒绝是当前提示词失败，不是 Pi 进程失败：相同请求不应重试，
 				// 但只要进程仍活着，下一条经用户修改的消息应继续复用该 runtime。
@@ -5191,7 +5214,7 @@ export class AgentManager {
 					this.notifyAgentAborted(agentId);
 				} else {
 					this.addDetailedErrorMessage(agentId);
-					this.notifyAgentError(agentId, topMsg?.errorMessage);
+					this.notifyAgentInterrupted(agentId, topMsg?.errorMessage);
 				}
 				// 与上一分支同款 abort 例外：终止回合不把活进程标成终态。
 				if (runtime && !abortedTurn) runtime.tab.status = "error";
@@ -6799,6 +6822,44 @@ export class AgentManager {
 			notification.show();
 		} catch {
 			// Notification failure must not affect abort settlement.
+		}
+	}
+
+	/**
+	 * 错误导致当前响应中断时发送系统通知。
+	 * 错误详情保留在会话诊断卡中，通知只说明“发生错误并已中断”，避免把上游 URL、
+	 * 请求参数或其它敏感诊断信息直接暴露到系统通知中心。
+	 */
+	private notifyAgentInterrupted(agentId: string, _errorMessage?: string): void {
+		try {
+			const settings = this.settingsStore.get();
+			if (!settings.enableNotifications) return;
+			if (!Notification.isSupported()) return;
+			if (this.notifiedInterruptedAgents.has(agentId)) return;
+			this.notifiedInterruptedAgents.add(agentId);
+			const runtime = this.agents.get(agentId);
+			const appName = app.getName();
+			const sessionTitle = runtime?.tab.title || appName;
+			const body = this.translate("mainNotification.sessionInterrupted", { title: sessionTitle });
+			const sessionId = resolveNotificationSessionId(
+				this.resolveSessionId ? () => this.resolveSessionId!(agentId) : undefined,
+				runtime?.tab.sessionId,
+			);
+			const notification = new Notification({
+				title: appName,
+				body,
+				silent: false,
+				toastXml: this.buildToastXml(appName, body, sessionId),
+			});
+			notification.on("click", () => {
+				this.focusMainWindowForSession(sessionId);
+			});
+			notification.on("failed", (_event, error) => {
+				void this.appLogger?.warn("agent", "Interrupted error notification failed to show", { agentId, error: String(error) });
+			});
+			notification.show();
+		} catch {
+			// Notification failure must not affect error state convergence.
 		}
 	}
 

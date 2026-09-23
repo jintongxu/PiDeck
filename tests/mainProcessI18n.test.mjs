@@ -23,6 +23,14 @@ test("main-process copy resolves locale and interpolates stable product text", (
   assert.equal(mainProcessT("en-US", "mainNotification.aborted", { title: "Session" }), "Session stopped the current response");
   assert.equal(mainProcessT("zh-CN", "mainNotification.aborted", { title: "会话" }), "会话已中止当前响应");
   assert.equal(
+    mainProcessT("zh-CN", "mainNotification.sessionInterrupted", { title: "会话" }),
+    "会话 发生错误，当前响应已中断，请查看错误详情",
+  );
+  assert.equal(
+    mainProcessT("en-US", "mainNotification.sessionInterrupted", { title: "Session" }),
+    "Session encountered an error and the current response was interrupted; check the error details",
+  );
+  assert.equal(
     mainProcessT("zh-CN", "mainNotification.badGatewayRetrying", { title: "会话" }),
     "会话 上游服务暂时不可用（HTTP 502），正在自动重试",
   );
