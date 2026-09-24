@@ -26,25 +26,16 @@ const workspaceActionPaddingClass =
 const workspaceSessionsClass = "min-w-0 basis-[calc(100%-24px)] ml-6 pl-2";
 
 function WorktreeStatusBadge(props: { status?: WorktreeStatus }) {
-  const status = props.status;
-  if (!status) return null;
-  if (status.unavailable) {
-    return (
-      <Badge variant="outline" className="h-4 shrink-0 px-1 py-0 text-[10px] leading-none text-muted-foreground" title={t("app.worktreeStatusUnavailable")}>
-        !
-      </Badge>
-    );
-  }
-  const changed = status.counts.staged + status.counts.modified + status.counts.untracked;
-  if (changed === 0 && status.counts.conflicted === 0 && !(status.ahead ?? 0) && !(status.behind ?? 0)) return null;
-  const parts: string[] = [];
-  if (status.counts.conflicted > 0) parts.push(t("app.worktreeStatusConflicts", { count: String(status.counts.conflicted) }));
-  if (changed > 0) parts.push(t("app.worktreeStatusChanged", { count: String(changed) }));
-  if ((status.ahead ?? 0) > 0) parts.push(`↑${status.ahead}`);
-  if ((status.behind ?? 0) > 0) parts.push(`↓${status.behind}`);
+  const behindRemoteMain = props.status?.behindRemoteMain ?? 0;
+  if (behindRemoteMain <= 0) return null;
+  const count = String(behindRemoteMain);
   return (
-    <Badge variant="outline" className="h-4 max-w-36 shrink-0 gap-0.5 truncate border-warning/40 bg-warning/10 px-1 py-0 text-[10px] leading-none text-warning" title={t("app.worktreeStatusHint")}>
-      {parts.join(" · ")}
+    <Badge
+      variant="outline"
+      className="h-4 max-w-36 shrink-0 truncate border-warning/40 bg-warning/10 px-1 py-0 text-[10px] leading-none text-warning"
+      title={t("app.worktreeBehindRemoteMainHint", { count })}
+    >
+      {t("app.worktreeBehindRemoteMain", { count })}
     </Badge>
   );
 }

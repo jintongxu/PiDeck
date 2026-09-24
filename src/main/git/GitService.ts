@@ -1008,6 +1008,23 @@ export class GitService {
 	}
 
 	/**
+	 * Count commits present on the cached origin/main ref but absent from this worktree's HEAD.
+	 * A missing remote ref is expected for repositories without origin/main, so it suppresses the badge.
+	 */
+	async getBehindRemoteMain(cwd: string): Promise<number | null> {
+		try {
+			const { stdout } = await this.git(
+				["rev-list", "--count", "HEAD..refs/remotes/origin/main"],
+				{ cwd, timeoutMs: GIT_MUTATION_TIMEOUT_MS },
+			);
+			const count = Number.parseInt(stdout.trim(), 10);
+			return Number.isFinite(count) ? count : null;
+		} catch {
+			return null;
+		}
+	}
+
+	/**
 	 * Read-only status aggregation for the main checkout and linked worktrees.
 	 * Each row is isolated so a stale/missing sibling cannot hide healthy worktrees.
 	 */
@@ -1016,6 +1033,7 @@ export class GitService {
 			try {
 				const groups = await this.getStatus(entry.path);
 				const aheadBehind = await this.getAheadBehind(entry.path);
+				const behindRemoteMain = await this.getBehindRemoteMain(entry.path);
 				return {
 					path: entry.path,
 					branch: entry.branch,
@@ -1029,6 +1047,7 @@ export class GitService {
 					changed: groups.index.length + groups.workingTree.length + groups.untracked.length + groups.merge.length,
 					ahead: aheadBehind?.ahead ?? null,
 					behind: aheadBehind?.behind ?? null,
+					behindRemoteMain,
 				};
 			} catch {
 				// Status is best effort: one stale/missing worktree must not hide all siblings.
@@ -1040,6 +1059,7 @@ export class GitService {
 					changed: 0,
 					ahead: null,
 					behind: null,
+					behindRemoteMain: null,
 					unavailable: true,
 				};
 			}

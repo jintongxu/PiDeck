@@ -60,7 +60,43 @@ test("GitService aggregates independent status counts for multiple worktrees", a
   assert.equal(statuses[1].isMain, false);
   assert.equal(statuses[1].counts.staged, 1);
   assert.equal(statuses[1].counts.modified, 0);
+  assert.equal(statuses[1].behindRemoteMain, null);
   assert.equal(statuses[1].unavailable, undefined);
+});
+
+test("GitService counts commits behind the cached origin/main ref for every worktree", async () => {
+  const repo = mkdtempSync(join(tmpdir(), "pideck-git-behind-main-"));
+  try {
+    git(repo, "init", "-b", "main");
+    git(repo, "config", "user.name", "PiDeck Test");
+    git(repo, "config", "user.email", "test@example.com");
+    writeFileSync(join(repo, "tracked.txt"), "initial\n");
+    git(repo, "add", "tracked.txt");
+    git(repo, "commit", "-m", "initial");
+
+    const child = join(repo, "feature-a");
+    git(repo, "worktree", "add", "-b", "feature-a", child);
+    const remoteMainCommit = git(repo, "commit-tree", "HEAD^{tree}", "-p", "HEAD", "-m", "remote main advance");
+    git(repo, "update-ref", "refs/remotes/origin/main", remoteMainCommit);
+
+    const service = new GitService();
+    let statuses = await service.getWorktreeStatus(repo, [
+      { path: repo, branch: "main" },
+      { path: child, branch: "feature-a" },
+    ]);
+    assert.equal(statuses[0].behindRemoteMain, 1);
+    assert.equal(statuses[1].behindRemoteMain, 1);
+
+    git(repo, "reset", "--hard", remoteMainCommit);
+    statuses = await service.getWorktreeStatus(repo, [
+      { path: repo, branch: "main" },
+      { path: child, branch: "feature-a" },
+    ]);
+    assert.equal(statuses[0].behindRemoteMain, 0);
+    assert.equal(statuses[1].behindRemoteMain, 1);
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
 });
 
 test("GitService preserves unavailable rows when a worktree path disappears", async () => {
@@ -72,4 +108,5 @@ test("GitService preserves unavailable rows when a worktree path disappears", as
   assert.equal(statuses[1].unavailable, true);
   assert.equal(statuses[1].ahead, null);
   assert.equal(statuses[1].behind, null);
+  assert.equal(statuses[1].behindRemoteMain, null);
 });

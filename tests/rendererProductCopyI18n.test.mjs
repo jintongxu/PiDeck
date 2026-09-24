@@ -109,6 +109,7 @@ const extensions = read("src/renderer/src/config/ExtensionsTab.tsx")
 const configShared = read("src/renderer/src/config/ConfigShared.tsx");
 const providerHeaders = read("src/renderer/src/config/providerHeaders.ts");
 const queuedPrompt = read("src/renderer/src/hooks/useQueuedPrompt.ts");
+const worktreeTree = read("src/renderer/src/components/sidebar/WorktreeTree.tsx");
 
 test("remaining renderer product copy is available in Chinese and English", () => {
 	i18n.setI18nLocale("zh-CN");
@@ -129,6 +130,7 @@ test("remaining renderer product copy is available in Chinese and English", () =
 	assert.equal(i18n.t("config.skillHubCopyInstallCommand"), "复制安装命令");
 	assert.equal(i18n.t("app.queuedDeliveryUnknown"), "消息可能未送达");
 	assert.equal(i18n.t("mermaid.renderFailed"), "Mermaid 图表渲染失败");
+	assert.equal(i18n.t("app.worktreeBehindRemoteMain", { count: 3 }), "落后 main 3");
 
 	i18n.setI18nLocale("en-US");
 	assert.equal(i18n.t("settings.tabs.common"), "General");
@@ -148,6 +150,14 @@ test("remaining renderer product copy is available in Chinese and English", () =
 	assert.equal(i18n.t("config.skillHubCopyInstallCommand"), "Copy install command");
 	assert.equal(i18n.t("app.queuedDeliveryUnknown"), "The message may not have been delivered");
 	assert.equal(i18n.t("mermaid.renderFailed"), "Failed to render Mermaid diagram");
+	assert.equal(i18n.t("app.worktreeBehindRemoteMain", { count: 3 }), "Behind main 3");
+});
+
+test("worktree status only renders commits behind origin/main", () => {
+	assert.match(worktreeTree, /const behindRemoteMain = props\.status\?\.behindRemoteMain \?\? 0/);
+	assert.match(worktreeTree, /if \(behindRemoteMain <= 0\) return null/);
+	assert.match(worktreeTree, /t\("app\.worktreeBehindRemoteMain", \{ count \}\)/);
+	assert.doesNotMatch(worktreeTree, /worktreeStatusChanged|status\.ahead|status\.behind/);
 });
 
 test("reachable renderer surfaces use i18n without changing their UI structure", () => {
