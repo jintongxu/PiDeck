@@ -59,6 +59,8 @@ export type GitWorktreeStatus = {
 	/** Null means the current branch has no configured upstream (or comparison is unavailable). */
 	ahead: number | null;
 	behind: number | null;
+	/** Commits in origin/main that are not reachable from this worktree's HEAD. */
+	behindRemoteMain: number | null;
 	/** True when this worktree could not be inspected; never present for a clean worktree. */
 	unavailable?: boolean;
 };
