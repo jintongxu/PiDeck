@@ -109,6 +109,13 @@ const TAB_INDICATOR_SPRING: Transition = {
 };
 /** 用户开启「减少动态效果」时禁用指示条滑动（瞬时切换，不动画）。 */
 const TAB_INDICATOR_INSTANT: Transition = { duration: 0 };
+/** 拖拽实时重排时仅让位置做 spring，避免标签突然跳位。 */
+const TAB_REORDER_TRANSITION: Transition = {
+  type: "spring",
+  stiffness: 520,
+  damping: 38,
+  mass: 0.7,
+};
 
 /**
  * 会话 Tab 栏（浏览器式多 Tab）：标题栏下方展示当前打开的所有会话。
@@ -122,7 +129,8 @@ const TAB_INDICATOR_INSTANT: Transition = { duration: 0 };
  * 固定（pin）与排序：
  * - 固定 Tab 前置、宽度更小、无关闭按钮，右键/下拉菜单可取消固定；
  * - 拖拽 Tab 可排序，固定/普通区间交叉拖动会自动转换固定状态；
- * - 拖到聊天区边缘可分屏（见 SessionSplitStage）。
+ * - 拖到聊天区边缘可分屏（见 SessionSplitStage）；在 Tab 栏内移动时，目标 Tab 会实时让位，
+ *   不显示额外的落点竖线。
  *
  * 操作入口（融合对方收敛方案）：
  * - 每个会话 Tab 的下拉按钮（或右键）打开操作菜单：切换到该会话、固定、
@@ -253,12 +261,10 @@ export type SessionTabsBarProps = {
 
 export function SessionTabsBar(props: SessionTabsBarProps) {
   const { tabs, pinnedTabs, currentSessionId, previewTabId } = props;
-  const tabItems = useMemo(() => tabs.map((sessionId) => ({ sessionId })), [tabs]);
   const dragSourceRef = useRef<string | null>(null);
+  /** 已经提交过的实时落点；同一半区的 dragover 不重复写状态。 */
   const dragTargetRef = useRef<{ targetId: string; position: "before" | "after" } | null>(null);
   const [draggingId, setDraggingId] = useState<string | null>(null);
-  // 拖拽插入指示：当前悬停的目标 Tab 与插入侧（before=左缘 / after=右缘）
-  const [dragIndicator, setDragIndicator] = useState<{ targetId: string; position: "before" | "after" } | null>(null);
   // 分屏组管理菜单（右键胶囊打开）：重命名草稿
   const [splitGroupMenuOpen, setSplitGroupMenuOpen] = useState(false);
   const [splitGroupNameDraft, setSplitGroupNameDraft] = useState("");
@@ -277,6 +283,7 @@ export function SessionTabsBar(props: SessionTabsBarProps) {
   // 不渲染胶囊/颜色/折叠。2026-09 收敛：旧“浏览器标签组胶囊 + 开关”已废弃，分组成为默认。
   const sessionRecords = useAtomValue(sessionRecordsAtom);
   const projectsById = useAtomValue(projectInventoryByIdAtom);
+  const tabItems = useMemo(() => tabs.map((sessionId) => ({ sessionId })), [tabs]);
 
   // 项目分组视图：始终构建（分组排序是固有行为）。分屏组内的 Tab 不参与项目分组（保持分屏语义），
   // 从输入中剔除后再聚合；组顺序 = 组内首个 Tab 在 tabs 中的出现顺序。
@@ -361,39 +368,78 @@ export function SessionTabsBar(props: SessionTabsBarProps) {
     props.editorTabs,
   ]);
 
-  /** onDragOver 期间按鼠标位置相对目标 Tab 中点决定插入前后 */
+  /**
+   * 目标跨过中线时立即提交一次排序，让后方标签在拖拽过程中动态让位。
+   * 不再绘制竖线，也不等到 drop 才改变顺序；Motion layout 负责把标签平滑推开。
+   */
+  const applyDragTarget = useCallback((target: { targetId: string; position: "before" | "after" }) => {
+    const sourceId = dragSourceRef.current;
+    if (!sourceId || sourceId === target.targetId) return;
+    const previous = dragTargetRef.current;
+    if (previous?.targetId === target.targetId && previous.position === target.position) return;
+    dragTargetRef.current = target;
+    props.onReorder(sourceId, target.targetId, target.position);
+  }, [props.onReorder]);
+
+  /** onDragOver 期间按鼠标位置相对目标 Tab 中点决定插入前后。 */
   const handleDragOver = (event: React.DragEvent, targetId: string) => {
-    if (!dragSourceRef.current || dragSourceRef.current === targetId) return;
+    if (!dragSourceRef.current) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = "move";
+    if (dragSourceRef.current === targetId) return;
+    const rect = event.currentTarget.getBoundingClientRect();
+    applyDragTarget({
+      targetId,
+      position: event.clientX < rect.left + rect.width / 2 ? "before" : "after",
+    });
+  };
+
+  /**
+   * 分隔线、组头和 Tab 栏空隙没有自己的 drop handler。
+   * 从当前可见 Tab 的几何位置推导最近目标，让动态让位在整个 Tab 栏连续生效。
+   */
+  const handleTabsDragOver = (event: React.DragEvent<HTMLDivElement>) => {
+    if (!dragSourceRef.current) return;
     event.preventDefault();
     event.dataTransfer.dropEffect = "move";
-    const rect = event.currentTarget.getBoundingClientRect();
-    const position = event.clientX < rect.left + rect.width / 2 ? "before" : "after";
-    dragTargetRef.current = { targetId, position };
-    // 指示线随悬停实时更新；仅位置变化时 setState，避免高频 re-render
-    setDragIndicator((current) =>
-      current?.targetId === targetId && current.position === position ? current : { targetId, position },
+    const sourceId = dragSourceRef.current;
+    const elements = Array.from(
+      event.currentTarget.querySelectorAll<HTMLElement>("[data-session-id]"),
+    ).filter((element) => element.dataset.sessionId !== sourceId);
+    if (elements.length === 0) return;
+    const nearest = elements.reduce<{ element: HTMLElement; distance: number } | null>(
+      (current, element) => {
+        const rect = element.getBoundingClientRect();
+        const center = rect.left + rect.width / 2;
+        const candidate = { element, distance: Math.abs(event.clientX - center) };
+        return current && current.distance <= candidate.distance ? current : candidate;
+      },
+      null,
     );
+    if (!nearest) return;
+    const rect = nearest.element.getBoundingClientRect();
+    const targetId = nearest.element.dataset.sessionId;
+    if (!targetId) return;
+    applyDragTarget({
+      targetId,
+      position: event.clientX < rect.left + rect.width / 2 ? "before" : "after",
+    });
   };
 
   const handleDrop = (event: React.DragEvent) => {
     event.preventDefault();
-    const sourceId = dragSourceRef.current;
-    const target = dragTargetRef.current;
+    event.stopPropagation();
     dragSourceRef.current = null;
     dragTargetRef.current = null;
     setDraggingId(null);
-    setDragIndicator(null);
     props.onDragSessionChange?.(null);
-    if (sourceId && target) {
-      props.onReorder(sourceId, target.targetId, target.position);
-    }
   };
 
   const handleDragEnd = () => {
     dragSourceRef.current = null;
     dragTargetRef.current = null;
     setDraggingId(null);
-    setDragIndicator(null);
     props.onDragSessionChange?.(null);
   };
 
@@ -436,6 +482,9 @@ export function SessionTabsBar(props: SessionTabsBarProps) {
         ref={scrollRef}
         layoutRoot
         onWheel={handleTabsWheel}
+        onDragOver={handleTabsDragOver}
+        onDrop={handleDrop}
+        onDragEnd={handleDragEnd}
         className="session-tabs-scroll relative flex h-full min-w-0 flex-1 items-center gap-1 overflow-x-auto overflow-y-hidden [scrollbar-width:none]"
       >
         {(() => {
@@ -452,12 +501,6 @@ export function SessionTabsBar(props: SessionTabsBarProps) {
               pinned={pinnedTabs.includes(sessionId)}
               preview={sessionId === previewTabId}
               dragging={draggingId === sessionId}
-              // 指示线插在目标 Tab 的边缘：before=左缘，after=右缘
-              indicator={
-                dragIndicator && dragIndicator.targetId === sessionId
-                  ? dragIndicator.position
-                  : null
-              }
               // 运行中反馈徽章只对当前会话有意义（作用于其绑定的 Agent 运行时），非当前 Tab 不显示；
               // 运行控制菜单项已上收右上角 ⋯ 菜单，Tab 只保留转动态展示
               isStopping={sessionId === currentSessionId ? props.runControl?.isStopping : undefined}
@@ -1001,8 +1044,6 @@ function SessionTab(props: {
   /** VS Code 预览：斜体，双击后常驻 */
   preview: boolean;
   dragging: boolean;
-  /** 拖拽插入指示：before=左缘竖线，after=右缘竖线 */
-  indicator?: "before" | "after" | null;
   /** 运行操作反馈（仅当前会话 Tab 传入）：Tab 徽章显示 停止中/重启中/重载中 转动。
    *  运行控制菜单项（停止/重启/重新加载）已上收右上角 ⋯ 菜单，Tab 上不再提供。 */
   isStopping?: boolean;
@@ -1056,16 +1097,18 @@ function SessionTab(props: {
   return (
     <ContextMenu>
       <ContextMenuTrigger asChild>
-      <div
+      <motion.div
+        layout
+        transition={TAB_REORDER_TRANSITION}
         role="tab"
         aria-selected={active}
         data-session-id={sessionId}
         title={title}
         draggable
-        onDragStart={props.onDragStart}
-        onDragOver={props.onDragOver}
-        onDrop={props.onDrop}
-        onDragEnd={props.onDragEnd}
+        onDragStartCapture={props.onDragStart}
+        onDragOverCapture={props.onDragOver}
+        onDropCapture={props.onDrop}
+        onDragEndCapture={props.onDragEnd}
         onClick={select}
         onDoubleClick={() => {
           // 双击预览 Tab → 常驻（侧栏双击同语义）；已常驻则忽略
@@ -1165,19 +1208,9 @@ function SessionTab(props: {
           </button>
         )}
         </span>
-        {/* 拖拽插入指示线：2px 主题色竖线，贴在目标 Tab 左/右缘 */}
-        {props.indicator && (
-          <span
-            aria-hidden="true"
-            className={cn(
-              "pointer-events-none absolute top-1 bottom-1 w-0.5 rounded-full bg-primary",
-              props.indicator === "before" ? "-left-0.5" : "-right-0.5",
-            )}
-          />
-        )}
         {/* 灰色选中背景按钮（beui Tabs 同款滑动；无底部条）：只有 active Tab 渲染，layoutId 全栏共享，
-            切换时 spring 滑到新位置并在目标 Tab 铺满整块灰底——替代旧的底部细条/黑色实底；
-            拖拽插入线（props.indicator）是竖线且仅拖拽期存在，二者位置不重叠。
+            切换时 spring 滑到新位置并在目标 Tab 铺满整块灰底——替代旧的底部细条/黑色实底。
+            拖拽排序由外层 layout spring 动态让位，不额外绘制落点竖线。
             背景色用 inline 变量（var(--color-bg-active)）而非 bg-accent 类：类依赖 Tailwind
             扫描生成，曾出现在部分环境下类未输出导致「激活 Tab 无背景」的回归。inline 变量
             随主题实时切换，与 SessionTree 选中态同色。 */}
@@ -1190,7 +1223,7 @@ function SessionTab(props: {
             className="pointer-events-none absolute inset-0 rounded-md bg-accent"
           />
         )}
-      </div>
+      </motion.div>
       </ContextMenuTrigger>
       <ContextMenuContent className="min-w-40">
         {/* 固定/关闭等 Tab 级操作；运行控制在右上角 ⋯ 菜单 */}

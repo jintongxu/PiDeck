@@ -102,6 +102,45 @@ export function splitLayoutSessionIds(layout: SessionSplitLayout): string[] {
   return ids;
 }
 
+/**
+ * 在保持分屏树形状不变的前提下重排布局内会话。
+ * Tab 栏中的分屏组按这个布局顺序渲染；只改 tabs 数组会让拖拽结果
+ * 下一次渲染又回到旧顺序，因此这里同步重建叶子节点。
+ */
+export function reorderSplitLayoutSessions(
+  layout: SessionSplitLayout,
+  sourceId: string,
+  targetId: string,
+  position: "before" | "after",
+): SessionSplitLayout {
+  const ids = splitLayoutSessionIds(layout);
+  if (sourceId === targetId || !ids.includes(sourceId) || !ids.includes(targetId)) {
+    return layout;
+  }
+  const rest = ids.filter((id) => id !== sourceId);
+  const targetIndex = rest.indexOf(targetId);
+  const insertAt = targetIndex < 0
+    ? rest.length
+    : targetIndex + (position === "after" ? 1 : 0);
+  const reordered = [
+    ...rest.slice(0, insertAt),
+    sourceId,
+    ...rest.slice(insertAt),
+  ];
+  let cursor = 0;
+  const panels = layout.panels.map((panel) => {
+    if (panel.kind === "session") {
+      return { kind: "session" as const, sessionId: reordered[cursor++] };
+    }
+    return {
+      ...panel,
+      first: reordered[cursor++],
+      second: reordered[cursor++],
+    };
+  });
+  return { ...layout, panels };
+}
+
 /** 布局内会话总数。 */
 export function countSplitSessions(layout: SessionSplitLayout): number {
   return splitLayoutSessionIds(layout).length;

@@ -558,7 +558,7 @@ export function SessionTree(props: {
       {display.visibleChildren.map(renderChild)}
 
       {(display.hiddenChildCount > 0 || canCollapseChildren) && (
-        <div className="flex min-w-0 items-center gap-1">
+        <div className="flex min-w-0 w-full items-center gap-1">
           {display.hiddenChildCount > 0 && (
             <Button
               variant="ghost" size="sm"
