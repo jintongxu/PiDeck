@@ -10,6 +10,13 @@ export type Project = {
 	worktreeEnabled?: boolean;
 	/** 如果是 worktree 子项目，指向父项目的 id */
 	worktreeParentId?: string;
+	/**
+	 * worktree 当前绑定的本地分支；用于物理 worktree 已移除但分支清理失败后的安全重试。
+	 * 旧项目没有该字段时仍可从 Git worktree 列表补齐，保持向后兼容。
+	 */
+	worktreeBranch?: string;
+	/** 仅由 PiDeck 成功创建 worktree 时写为 true；扫描不得按目录/分支命名推断，避免误删外部分支。 */
+	worktreeBranchManaged?: boolean;
 	/** 项目所属环境：windows 或 wsl。缺省视为 windows（兼容旧数据）。 */
 	environment?: "windows" | "wsl";
 	/**

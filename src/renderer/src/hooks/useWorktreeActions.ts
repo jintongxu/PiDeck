@@ -53,6 +53,14 @@ export function useWorktreeActions(deps: WorktreeActionsDeps) {
 			showNotice(t("app.worktreeCreated") + result.branch);
 			return result;
 		} catch (e) {
+			// 创建初始化失败且补偿清理也失败时，主进程会注册一个可重试的子项目记录；
+			// 失败路径也刷新目录与 worktree，确保用户能从侧栏再次执行安全删除。
+			try {
+				setProjects(await api.projects.list());
+				await refreshWorktrees(projectId);
+			} catch {
+				// 原始创建错误优先展示；刷新失败不覆盖根因。
+			}
 			const message = e instanceof Error ? e.message : String(e);
 			showNotice(t("app.worktreeCreateFailed") + message, 5000);
 			throw e;

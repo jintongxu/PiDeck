@@ -1,6 +1,6 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
-import { basename, dirname, join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import { trashPath } from "../fs/trash";
 import { currentGitExecutable } from "./gitExecutable";
@@ -13,6 +13,19 @@ type WorktreeCopy = (
 	key: MainProcessTranslationKey,
 	params?: Record<string, string | number>,
 ) => string;
+
+/** 创建已失败且补偿清理也未完成；IPC 用携带的 binding 持久化安全重试入口。 */
+export class WorktreeCreateCleanupError extends Error {
+	constructor(
+		message: string,
+		readonly worktreePath: string,
+		readonly branch: string,
+		options: { cause: unknown },
+	) {
+		super(message, options);
+		this.name = "WorktreeCreateCleanupError";
+	}
+}
 
 /**
  * 管理 git worktree 的创建、查询、删除。
@@ -36,32 +49,47 @@ export class WorktreeService {
 	 * 主工作区 40G 数据丢失）。
 	 */
 	async list(projectPath: string): Promise<WorktreeEntry[]> {
-		const entries = await this.listAll(projectPath);
-		const mainWorktree = await this.getMainWorktree(projectPath);
-		return entries.filter((entry) => !mainWorktree || !this.samePath(entry.path, this.canonicalSync(mainWorktree)));
+		try {
+			return await this.listOrThrow(projectPath);
+		} catch {
+			return [];
+		}
+	}
+
+	/**
+	 * 严格列出 linked worktrees。删除链必须使用此方法，不能把 Git 查询失败的空数组
+	 * 误判为“目标已不存在”并向用户报告成功。
+	 */
+	async listOrThrow(projectPath: string): Promise<WorktreeEntry[]> {
+		const entries = await this.listAllOrThrow(projectPath);
+		const mainWorktree = await this.getMainWorktreeOrThrow(projectPath);
+		return entries.filter((entry) => !this.samePath(entry.path, mainWorktree));
 	}
 
 	/** List the main checkout and all linked worktrees for read-only status aggregation. */
 	async listAll(projectPath: string): Promise<WorktreeEntry[]> {
 		try {
-			const { stdout } = await execFileAsync(
-				currentGitExecutable(),
-				["worktree", "list", "--porcelain"],
-				{ cwd: projectPath },
-			);
-			const entries = this.parseWorktreeList(stdout, "");
-			// Git normally prints the main checkout first, but make that ordering an
-			// explicit contract so `isMain` remains correct across Git versions.
-			const mainWorktree = await this.getMainWorktree(projectPath);
-			if (!mainWorktree) return entries;
-			const mainIndex = entries.findIndex((entry) => this.samePath(entry.path, mainWorktree));
-			if (mainIndex <= 0) return entries;
-			const [main] = entries.splice(mainIndex, 1);
-			entries.unshift(main);
-			return entries;
+			return await this.listAllOrThrow(projectPath);
 		} catch {
 			return [];
 		}
+	}
+
+	private async listAllOrThrow(projectPath: string): Promise<WorktreeEntry[]> {
+		const { stdout } = await execFileAsync(
+			currentGitExecutable(),
+			["worktree", "list", "--porcelain"],
+			{ cwd: projectPath },
+		);
+		const entries = this.parseWorktreeList(stdout, "");
+		// Git normally prints the main checkout first, but make that ordering an
+		// explicit contract so `isMain` remains correct across Git versions.
+		const mainWorktree = await this.getMainWorktreeOrThrow(projectPath);
+		const mainIndex = entries.findIndex((entry) => this.samePath(entry.path, mainWorktree));
+		if (mainIndex <= 0) return entries;
+		const [main] = entries.splice(mainIndex, 1);
+		entries.unshift(main);
+		return entries;
 	}
 
 	/**
@@ -78,13 +106,16 @@ export class WorktreeService {
 		// 这样用户可以在项目同级目录下直接找到 worktree 文件，符合标准 git worktree 习惯。
 		const parentDir = resolve(projectPath, "..");
 
-		const { worktreeDir, branch } = await this.allocateWorktreeTarget(projectPath, parentDir, baseSlug);
+		const { worktreeDir, branch, createBranch } = await this.allocateWorktreeTarget(projectPath, parentDir, baseSlug);
 
-		// 创建 worktree（仅创建目录结构，不 checkout），再 reset --hard 填充内容。
+		// 同名分支若是旧版删除遗留、且未被任何 worktree 使用，则直接复用；新名称才用 -b 创建。
+		// 两条路径都先 --no-checkout，再 reset --hard 填充工作区。
 		try {
 			await execFileAsync(
 				currentGitExecutable(),
-				["worktree", "add", "--no-checkout", "-b", branch, worktreeDir],
+				createBranch
+					? ["worktree", "add", "--no-checkout", "-b", branch, worktreeDir]
+					: ["worktree", "add", "--no-checkout", worktreeDir, branch],
 				{ cwd: projectPath },
 			);
 		} catch (error) {
@@ -95,8 +126,28 @@ export class WorktreeService {
 		try {
 			await execFileAsync(currentGitExecutable(), ["reset", "--hard"], { cwd: worktreeDir });
 		} catch (error) {
-			// reset 失败时清理刚创建的 worktree，避免残留半初始化目录。
-			await this.remove(worktreeDir, projectPath).catch(() => false);
+			// reset 失败时补偿清理刚创建的 worktree 与分支。清理失败不能吞掉：携带显式
+			// managed binding 交给 IPC 持久化，避免同名创建永久被无主残留分支阻塞。
+			try {
+				const cleaned = await this.remove(worktreeDir, projectPath, {
+					branch,
+					managed: true,
+					preserveBranch: !createBranch,
+				});
+				if (!cleaned) throw new Error("Incomplete worktree cleanup was rejected by Git");
+			} catch (cleanupError) {
+				throw new WorktreeCreateCleanupError(
+					this.translate("mainWorktree.createFailed"),
+					worktreeDir,
+					branch,
+					{
+						cause: new AggregateError(
+							[error, cleanupError],
+							"Worktree initialization and compensating cleanup both failed",
+						),
+					},
+				);
+			}
 			console.error("[WorktreeService] git reset failed for new worktree", error);
 			throw new Error(this.translate("mainWorktree.createFailed"));
 		}
@@ -109,24 +160,36 @@ export class WorktreeService {
 	 * 先 git worktree remove --force，再清理目录，最后删除对应的分支。
 	 *
 	 * 安全约束（防止误删主工作区/非 worktree 目录）：
-	 * 1. 目标必须出现在 list() 中（list 已排除主工作区）；
+	 * 1. 目标必须出现在严格 Git 列表中（已排除主工作区），查询失败直接抛错；
 	 * 2. 目标与仓库主工作区 realpath 相等时直接拒绝（硬性兜底，即使 list 过滤被绕过）；
 	 * 3. git worktree remove 失败时：目录仍存在则拒绝物理删除——旧实现 catch 后
 	 *    无条件 rm -rf，若 git 因“不能移除主工作区”等拒绝，会把主项目目录整个删掉；
 	 *    目录已不存在（外部删过的残留记录）则继续清理，rm 无物理内容可删。
 	 */
-	async remove(worktreePath: string, projectPath: string): Promise<boolean> {
-		const entries = await this.list(projectPath);
+	async remove(
+		worktreePath: string,
+		projectPath: string,
+		persistedBinding?: { branch: string; managed: boolean; preserveBranch?: boolean },
+	): Promise<boolean> {
+		const entries = await this.listOrThrow(projectPath);
 		// 统一 resolve 路径空间（与 porcelain 解析/同一台机器 8.3 短名一致）；
 		// 此前 canonical（realpath 长名）与 samePath（resolve 空间）混用，
 		// Windows 短路径下 entry 永远匹配不上 → 删除按钮静默失效。
 		const normalizedTarget = this.canonicalSync(worktreePath);
 		const entry = entries.find(asyncEntry => this.samePath(asyncEntry.path, normalizedTarget));
-		if (!entry) return false;
+		if (!entry) {
+			// Git 已不跟踪且目录也不存在时，仅持久化的精确 branch binding 能支持重试。
+			// binding 来自此前的 Git porcelain 记录，并由 IPC 校验父项目归属，不按目录名猜测。
+			if (existsSync(worktreePath) || !persistedBinding) return false;
+			if (persistedBinding.branch !== "detached") {
+				await this.deleteBranch(projectPath, persistedBinding.branch);
+			}
+			return true;
+		}
 
 		// 硬性防护：目标与仓库主工作区相同时拒绝删除（realpath 比较，兼容 junction/8.3 短路径）。
-		const mainWorktree = await this.getMainWorktree(projectPath);
-		if (mainWorktree && this.samePath(this.canonicalSync(mainWorktree), normalizedTarget)) {
+		const mainWorktree = await this.getMainWorktreeOrThrow(projectPath);
+		if (this.samePath(this.canonicalSync(mainWorktree), normalizedTarget)) {
 			return false;
 		}
 
@@ -138,20 +201,48 @@ export class WorktreeService {
 			if (existsSync(worktreePath)) return false;
 		}
 
-		// git 已确认移除后，把物理目录移入系统回收站（可恢复删除）。
-		// 目录已被外部删除时无需回收站，直接返回成功（残留记录清理路径）。
-		if (!existsSync(worktreePath)) return true;
-		// 回收站不可用时 trashPath 抛错：删除失败比永久丢失安全（历史教训：误删 40G）。
-		await trashPath(worktreePath, { source: "git:worktree-remove" });
+		// git 已确认移除后，把仍残留的物理目录移入系统回收站（可恢复删除）。
+		// 正常情况下 git worktree remove 会直接移除目录；不能因此提前返回，否则下面的
+		// 分支清理永远不会执行，同名工作区再次创建时就会被残留分支阻塞。
+		if (existsSync(worktreePath)) {
+			// 回收站不可用时 trashPath 抛错：删除失败比永久丢失安全（历史教训：误删 40G）。
+			await trashPath(worktreePath, { source: "git:worktree-remove" });
+		}
 
-		// 删除 PiDeck 创建的分支：旧版本使用 pideck/{slug}，新版本使用与目录名一致的 {slug}。
-		// 对外部 worktree 尽量保守，只在“分支名等于目录名”时认为是 PiDeck 创建的同名工作区。
-		const worktreeDirName = basename(worktreePath);
-		if (entry.branch?.startsWith("pideck/") || entry.branch === worktreeDirName) {
-			await execFileAsync(currentGitExecutable(), ["branch", "-D", entry.branch], { cwd: projectPath }).catch(() => undefined);
+		// 用户删除链会删除 Git 当前精确绑定的分支；仅“复用历史孤儿分支后初始化失败”的
+		// 补偿清理显式 preserveBranch，避免回滚误删原有分支。
+		if (!persistedBinding?.preserveBranch && entry.branch !== "detached") {
+			await this.deleteBranch(projectPath, entry.branch);
 		}
 
 		return true;
+	}
+
+	/**
+	 * 强制删除 PiDeck 管理的本地分支。失败时仅在 ref 已确认不存在时视为成功；
+	 * 否则向上抛错，让 IPC 保留项目 binding，用户可再次删除重试。
+	 */
+	private async deleteBranch(projectPath: string, branch: string): Promise<void> {
+		try {
+			await execFileAsync(currentGitExecutable(), ["branch", "-D", branch], { cwd: projectPath });
+		} catch (error) {
+			try {
+				await execFileAsync(
+					currentGitExecutable(),
+					["show-ref", "--verify", "--quiet", `refs/heads/${branch}`],
+					{ cwd: projectPath },
+				);
+			} catch (verifyError) {
+				// show-ref 的退出码 1 才能证明 ref 不存在；Git/权限等其他错误不能伪装成成功。
+				if (
+					typeof verifyError === "object" &&
+					verifyError !== null &&
+					"code" in verifyError &&
+					verifyError.code === 1
+				) return;
+			}
+			throw error;
+		}
 	}
 
 	/**
@@ -170,31 +261,28 @@ export class WorktreeService {
 			.then(() => true)
 			.catch(() => false);
 		if (ref) {
-			throw new Error(this.translate("mainWorktree.branchExists"));
+			// 兼容旧版删除只移除目录、遗留同名分支的情况：未被任何 worktree checkout 的
+			// 本地分支可以安全复用；仍在主/其他 worktree 使用时继续明确报冲突。
+			const branchInUse = (await this.listAllOrThrow(projectPath)).some(
+				(entry) => entry.branch === branch,
+			);
+			if (branchInUse) throw new Error(this.translate("mainWorktree.branchExists"));
+			return { worktreeDir, branch, createBranch: false };
 		}
-		return { worktreeDir, branch };
+		return { worktreeDir, branch, createBranch: true };
 	}
 
 
-	/**
-	 * 推导仓库主工作区目录（git 仓库根 checkout）。
-	 * 通过 git rev-parse --git-common-dir 拿到共享 .git 目录（主仓库的 .git），
-	 * 其父目录即主工作区；相对路径基于 cwd（= projectPath）解析。
-	 * 非 git 目录或命令失败返回 null。
-	 */
-	private async getMainWorktree(projectPath: string): Promise<string | null> {
-		try {
-			const { stdout } = await execFileAsync(
-				currentGitExecutable(),
-				["rev-parse", "--git-common-dir"],
-				{ cwd: projectPath },
-			);
-			const commonDir = stdout.trim();
-			if (!commonDir) return null;
-			return dirname(resolve(projectPath, commonDir));
-		} catch {
-			return null;
-		}
+	/** 通过共享 .git 目录严格推导主工作区；Git 查询失败必须向删除链传播。 */
+	private async getMainWorktreeOrThrow(projectPath: string): Promise<string> {
+		const { stdout } = await execFileAsync(
+			currentGitExecutable(),
+			["rev-parse", "--git-common-dir"],
+			{ cwd: projectPath },
+		);
+		const commonDir = stdout.trim();
+		if (!commonDir) throw new Error("Git returned an empty common directory");
+		return dirname(resolve(projectPath, commonDir));
 	}
 
 	/**

@@ -194,7 +194,7 @@ test("remove() 正常删除 worktree：目录进回收站、分支被删除", as
 		const { fakeExecFile, calls } = createFakeGit({ worktreeListOutput: porcelain, commonDir: join(root, ".git") });
 		const { trashImpl, trashCalls } = defaultTrash();
 		const svc = loadService(fakeExecFile, trashImpl);
-		const ok = await svc.remove(wtB, wtA);
+		const ok = await svc.remove(wtB, wtA, { branch: "feat-b", managed: true });
 		assert.equal(ok, true);
 		// 目录应移入回收站（fake trashPath 模拟真实移动：源目录被删除）
 		assert.ok(trashCalls.some((p) => lower(p) === lower(wtB)), "worktree 目录应移入回收站");

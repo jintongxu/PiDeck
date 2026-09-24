@@ -25,6 +25,7 @@ import {
   type SessionSplitLayout,
 } from "../utils/sessionSplitEdge";
 import type { FocusTargetPayload } from "../../../shared/types";
+import { closeAllSessionTabs } from "../utils/sessionWorkspaceClose";
 
 const PINNED_TABS_STORAGE_KEY = "pideck.pinnedSessionTabIds";
 const SPLIT_GROUP_COLLAPSED_KEY = "pideck.splitGroupCollapsed";
@@ -307,11 +308,13 @@ export function useSessionWorkspaceChrome(options: {
   }, [setSessionTabIds]);
 
   const closeAllTabs = useCallback(() => {
-    setSessionTabIds([]);
-    setPreviewSessionTabId(null);
-    setSplitLayout(null);
-    const projectId = tabsSnapshotRef.current.activeProjectId;
-    if (projectId) focusHandlersRef.current.focusProject(projectId);
+    const next = closeAllSessionTabs({
+      activeProjectId: tabsSnapshotRef.current.activeProjectId,
+    });
+    setSessionTabIds(next.sessionTabIds);
+    setPreviewSessionTabId(next.previewSessionTabId);
+    setSplitLayout(next.splitLayout);
+    if (next.focusProjectId) focusHandlersRef.current.focusProject(next.focusProjectId);
   }, [setSessionTabIds]);
 
   const togglePin = useCallback((sessionId: string) => {

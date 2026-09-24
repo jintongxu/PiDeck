@@ -1,4 +1,5 @@
 import { dialog, ipcMain } from "electron";
+import { existsSync } from "node:fs";
 import { resolve } from "node:path";
 import { spawn, type ChildProcess } from "node:child_process";
 import { ipcChannels } from "../../shared/ipc";
@@ -385,9 +386,15 @@ export function registerGitIpc({
 				...entry,
 				path: projectStoredPath(entry.path, project),
 			}));
-			// 每次扫描都同步注册外部新增 worktree，保证侧栏数据和 git 状态一致。
+			// 扫描只同步真实分支绑定，不能从目录名/分支名推断 PiDeck 所有权；仅创建链会写
+			// managed=true。ProjectStore 会在分支未变化时保留已有的显式所有权标记。
 			for (const wt of storedEntries) {
-				await projectStore.add(wt.path, projectId, project.environment === "wsl" ? "wsl" : "windows");
+				await projectStore.add(
+					wt.path,
+					projectId,
+					project.environment === "wsl" ? "wsl" : "windows",
+					{ branch: wt.branch, managed: false },
+				);
 			}
 			return storedEntries;
 		},
@@ -398,10 +405,36 @@ export function registerGitIpc({
 		async (_event, projectId: string, branchName: string) => {
 			const project = projectStore.get(projectId);
 			if (!project) throw new Error(`Project not found: ${projectId}`);
-			const info = await worktreeService.create(projectHostPath(project), projectId, branchName);
-			const storedPath = projectStoredPath(info.path, project);
-			await projectStore.add(storedPath, projectId, project.environment === "wsl" ? "wsl" : "windows");
-			return { ...info, path: storedPath };
+			try {
+				const info = await worktreeService.create(projectHostPath(project), projectId, branchName);
+				const storedPath = projectStoredPath(info.path, project);
+				await projectStore.add(
+					storedPath,
+					projectId,
+					project.environment === "wsl" ? "wsl" : "windows",
+					{ branch: info.branch, managed: true },
+				);
+				return { ...info, path: storedPath };
+			} catch (error) {
+				// reset 失败且补偿清理也失败时，service 会携带待清理 binding；先持久化，
+				// 让侧栏保留安全重试入口，而不是留下永远阻塞同名创建的无主分支。
+				if (
+					typeof error === "object" &&
+					error !== null &&
+					"worktreePath" in error &&
+					typeof error.worktreePath === "string" &&
+					"branch" in error &&
+					typeof error.branch === "string"
+				) {
+					await projectStore.add(
+						projectStoredPath(error.worktreePath, project),
+						projectId,
+						project.environment === "wsl" ? "wsl" : "windows",
+						{ branch: error.branch, managed: true },
+					);
+				}
+				throw error;
+			}
 		},
 	);
 
@@ -413,19 +446,46 @@ export function registerGitIpc({
 			try {
 				const hostWorktreePath = hostPath(worktreePath);
 				const hostProjectPath = projectHostPath(project);
-				const ok = await worktreeService.remove(hostWorktreePath, hostProjectPath);
 				const normalizeForCompare = (value: string) => {
 					const resolved = resolve(value);
 					return process.platform === "win32" ? resolved.toLowerCase() : resolved;
 				};
 				const normalizedTarget = normalizeForCompare(hostWorktreePath);
-				const stillInGit = (await worktreeService.list(hostProjectPath)).some(
-					(entry) => normalizeForCompare(entry.path) === normalizedTarget,
-				);
-				// 如果 git 已经没有该 worktree（包括用户在外部删过导致 remove 返回 false），
-				// 也要清理 PiDeck 项目记录，否则重启后会从 projects.json 恢复成"删不掉"。
-				if (ok || !stillInGit) {
-					const child = projectStore.findByPath(projectStoredPath(hostWorktreePath, project));
+				const storedPath = projectStoredPath(hostWorktreePath, project);
+				const foundChild = projectStore.findByPath(storedPath);
+				// Renderer 参数不可信：binding 和记录清理都必须同时匹配路径与父项目。
+				let child = foundChild?.worktreeParentId === projectId ? foundChild : null;
+				let persistedBinding = child?.worktreeBranch
+					? { branch: child.worktreeBranch, managed: true }
+					: undefined;
+				if (!persistedBinding) {
+					const liveEntry = (await worktreeService.listOrThrow(hostProjectPath)).find(
+						(entry) => normalizeForCompare(entry.path) === normalizedTarget,
+					);
+					if (liveEntry) {
+						// 用户确认删除该 worktree 后，Git porcelain 当前精确绑定的分支就是删除目标；
+						// 不按目录名推断，也不会影响仓库中的其他分支。managed 仅表示本次已授权删除。
+						persistedBinding = { branch: liveEntry.branch, managed: true };
+						child = await projectStore.add(
+							storedPath,
+							projectId,
+							project.environment === "wsl" ? "wsl" : "windows",
+							persistedBinding,
+						);
+					}
+				}
+				const ok = await worktreeService.remove(hostWorktreePath, hostProjectPath, persistedBinding);
+				const stillInGit = ok
+					? false
+					: (await worktreeService.listOrThrow(hostProjectPath)).some(
+						(entry) => normalizeForCompare(entry.path) === normalizedTarget,
+					);
+				// remove 明确成功，或严格 Git 查询确认“不跟踪且目录也不存在”时，才清理记录。
+				// 仍存在的未跟踪目录不是成功删除；查询失败也会抛错并保留 binding。
+				const externallyGone = !stillInGit && !existsSync(hostWorktreePath);
+				if (ok || externallyGone) {
+					const latestChild = child ?? projectStore.findByPath(storedPath);
+					child = latestChild?.worktreeParentId === projectId ? latestChild : null;
 					if (child) await projectStore.remove(child.id);
 					// worktree 删除 = 物理目录删除（走回收站），记审计日志便于追踪。
 					void appLogger.info("git", "Worktree removed", {

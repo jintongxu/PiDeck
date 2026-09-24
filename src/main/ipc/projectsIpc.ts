@@ -438,9 +438,13 @@ export function registerProjectsIpc({
 					for (const wt of entries) {
 						// findByPath 必须用 store 里的 Linux/规范化路径，不能拿 git 返回的 UNC。
 						const storedPath = resolveProjectStoredPath(wt.path, project);
-						if (!projectStore.findByPath(storedPath)) {
-							await projectStore.add(storedPath, projectId, project.environment);
-						}
+						// 已有 worktree 可能由外部 Git 创建；扫描只能记录绑定，不能推断分支所有权。
+						await projectStore.add(
+							storedPath,
+							projectId,
+							project.environment,
+							{ branch: wt.branch, managed: false },
+						);
 					}
 				} catch {
 					// worktree 查询失败不阻塞 toggle

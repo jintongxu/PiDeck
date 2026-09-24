@@ -160,8 +160,16 @@ export class ProjectStore {
     return this.add(projectPath, undefined, environment);
   }
 
-  /** 添加项目，可指定所属环境（缺省 windows） */
-  async add(path: string, worktreeParentId?: string, environment?: "windows" | "wsl") {
+  /**
+   * 添加项目，可指定所属环境（缺省 windows）。worktreeBinding 只由 Git 扫描/创建链写入，
+   * 记录分支所有权供“目录已删除但分支清理失败”的删除重试使用。
+   */
+  async add(
+    path: string,
+    worktreeParentId?: string,
+    environment?: "windows" | "wsl",
+    worktreeBinding?: { branch: string; managed: boolean },
+  ) {
     const normalizedPath = this.normalizeProjectPath(path);
     // 内置聊天项目不参与「同路径即已有项目」匹配（issue #149）：用户挑选的目录即使与
     // 聊天目录相同，也必须创建真正的项目记录——否则 add() 永远返回 builtin-chat，
@@ -170,12 +178,23 @@ export class ProjectStore {
       (project) => !this.isChatProject(project) && this.sameProjectPath(project.path, normalizedPath),
     );
     if (existing) {
+      const previousWorktreeParentId = existing.worktreeParentId;
       existing.path = normalizedPath;
       existing.lastOpenedAt = Date.now();
       // 外部已有 worktree 可能曾经作为顶级项目加入；开启工作区后需要补上父子关系。
       if (worktreeParentId && existing.id !== worktreeParentId) {
         existing.worktreeParentId = worktreeParentId;
         existing.pinned = false;
+      }
+      if (worktreeBinding) {
+        // Git 扫描只能确认“当前绑定哪个分支”，不能证明所有权；扫描传入 managed=false
+        // 时仅为同一父项目、同一分支保留既有显式标记，跨项目重新归属必须降级。
+        const keepManagedBinding =
+          previousWorktreeParentId === worktreeParentId &&
+          existing.worktreeBranch === worktreeBinding.branch &&
+          existing.worktreeBranchManaged === true;
+        existing.worktreeBranch = worktreeBinding.branch;
+        existing.worktreeBranchManaged = worktreeBinding.managed || keepManagedBinding;
       }
       this.forgetDismissedPath(normalizedPath);
       await this.save();
@@ -192,6 +211,10 @@ export class ProjectStore {
       // 兼容旧数据：environment 缺省视为 windows
       environment: environment || "windows",
       ...(worktreeParentId ? { worktreeParentId } : {}),
+      ...(worktreeBinding ? {
+        worktreeBranch: worktreeBinding.branch,
+        worktreeBranchManaged: worktreeBinding.managed,
+      } : {}),
     };
 
     this.projects.push(project);
@@ -419,20 +442,10 @@ export class ProjectStore {
     const project = this.get(id);
     if (!project) return null;
     project.worktreeEnabled = !project.worktreeEnabled;
-    // 关闭工作区模式时，清除已注册的 worktree 子项目记录，避免侧栏不再展示它们后
-    // 仍残留在 projects.json 中成为孤儿数据。仅移除项目记录，不删除物理 worktree 目录。
-    if (!project.worktreeEnabled) {
-      this.clearWorktreeChildren(id);
-    }
+    // 关闭只隐藏工作区模式，不删除子项目记录或分支绑定；重新开启时原有会话归属和
+    // PiDeck 分支所有权仍可恢复。物理删除只允许走 git:worktree-remove。
     await this.save();
     return project;
-  }
-
-  /** 移除指定父项目下的所有 worktree 子项目记录（不删除物理目录） */
-  clearWorktreeChildren(parentId: string) {
-    this.projects = this.projects.filter(
-      (project) => project.worktreeParentId !== parentId || this.isChatProject(project),
-    );
   }
 
   private isChatProject(project: Project) {

@@ -50,8 +50,11 @@ test("Git IPC keeps project lookup, bounded diffs, and stale-worktree cleanup", 
     assert.match(gitIpc, new RegExp(`ipcChannels\\.${channel}`));
   }
   assert.match(gitIpc, /maxEditorFileSizeMB/);
-  assert.match(gitIpc, /const stillInGit = \(await worktreeService\.list\(hostProjectPath\)\)\.some/);
-  assert.match(gitIpc, /if \(ok \|\| !stillInGit\)/);
+  assert.match(gitIpc, /worktreeService\.listOrThrow\(hostProjectPath\)/);
+  assert.match(gitIpc, /const stillInGit = ok[\s\S]*worktreeService\.listOrThrow\(hostProjectPath\)/);
+  assert.match(gitIpc, /const externallyGone = !stillInGit && !existsSync\(hostWorktreePath\)/);
+  assert.match(gitIpc, /if \(ok \|\| externallyGone\)/);
+  assert.match(gitIpc, /\{ branch: wt\.branch, managed: false \}/);
   assert.match(gitIpc, /projectStore\.remove\(child\.id\)/);
   assert.match(gitIpc, /const projectHostPath = \(project: \{ path: string \}\) => hostPath\(project\.path\)/);
   assert.match(gitIpc, /paths\.map\(hostPath\)/);
