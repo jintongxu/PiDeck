@@ -20,6 +20,12 @@ test("builds roots and arbitrarily deep parent/child trees", () => {
 	assert.deepEqual(ids(tree), [["root", [["child", [["grandchild", []]]]]]]);
 });
 
+test("all filter preserves hierarchy across every status for aggregate overviews", () => {
+	const tree = buildProjectIdeaHierarchy([idea("root", undefined, 1, "done"), idea("child", "root", 2, "doing"), idea("grandchild", "child", 3, "inbox")], "all");
+	assert.deepEqual(ids(tree), [["root", [["child", [["grandchild", []]]]]]]);
+	assert.equal(tree[0].contextOnly, false);
+});
+
 test("keeps matching descendants and marks nonmatching ancestors as context-only", () => {
 	const tree = buildProjectIdeaHierarchy([idea("root", undefined, 1, "done"), idea("child", "root", 2, "doing")], "active");
 	assert.equal(tree[0].idea.id, "root");

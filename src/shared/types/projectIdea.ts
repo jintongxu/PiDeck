@@ -37,8 +37,17 @@ export type ProjectIdeaCapture = {
 	sourceKind: ProjectIdeaSourceKind;
 };
 
+/**
+ * Ideas always belong to one concrete workspace. The project scope is a derived,
+ * grouped view over the main workspace and its registered worktree children.
+ */
+export type ProjectIdeaViewScope =
+	| { kind: "workspace"; workspaceId: string; ideaId?: string; overviewProjectId?: string }
+	| { kind: "project"; projectId: string };
+
 export type ProjectIdea = {
 	id: string;
+	/** Concrete workspace owner; the historical field name is kept for persistence compatibility. */
 	projectId: string;
 	title: string;
 	body: string;

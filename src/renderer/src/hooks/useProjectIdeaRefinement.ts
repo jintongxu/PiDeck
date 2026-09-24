@@ -167,6 +167,8 @@ export function useProjectIdeaRefinement() {
 		requestRef.current += 1;
 		clearResponseTimer();
 		requestStateRef.current = null;
+		setError(null);
+		setResult(null);
 		setResultTargetKey(null);
 		const id = activeSessionRef.current;
 		setRunning(false);

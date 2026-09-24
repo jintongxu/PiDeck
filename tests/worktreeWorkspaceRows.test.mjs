@@ -40,10 +40,12 @@ test("workspace title actions match the normal project toolbar", () => {
   // 根项目操作保持原样；工作区展开后也不能因为内部工作区行而消失。
   assert.match(projectTree, /<div className=\{cn\(dimmedActionsClass/);
   assert.doesNotMatch(projectTree, /\{\(!project\.worktreeEnabled \|\| collapsed\) && \(/);
-  // 工作区标题按会话栏的方式通过右侧留白动画为 + / ⋯ 让位，而不是隐藏文字。
+  // 工作区标题按会话栏的方式通过右侧留白动画为想法 / + / ⋯ 让位，而不是隐藏文字。
   assert.match(worktreeTree, /transition-\[padding-right\]/);
-  assert.match(worktreeTree, /group-hover\/workspace-row:pr-\[52px\]/);
-  assert.match(worktreeTree, /group-focus-within\/workspace-row:pr-\[52px\]/);
+  assert.match(worktreeTree, /group-hover\/workspace-row:pr-\[80px\]/);
+  assert.match(worktreeTree, /group-focus-within\/workspace-row:pr-\[80px\]/);
+  assert.match(mainSection, /manageIdeas\(\{ kind: "workspace", workspaceId: props\.project\.id \}\)/);
+  assert.match(rowView, /manageIdeas\(\{ kind: "workspace", workspaceId: childProject\.id \}\)/);
   assert.doesNotMatch(mainSection, /@max-\[255px\]/);
   assert.doesNotMatch(rowView, /@max-\[255px\]/);
 });

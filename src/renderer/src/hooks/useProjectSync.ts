@@ -159,10 +159,13 @@ export function useProjectSync(input: UseProjectSyncInput) {
         api.git.worktreeList(projectId),
         api.git.branches(projectId).catch(() => ({ current: null, branches: [] })),
       ]);
-      setWorktreesByProject((prev) => ({ ...prev, [projectId]: entries }));
-      setBranchByProject((prev) => ({ ...prev, [projectId]: branchInfo.current }));
+      // worktreeList 在主进程会先把发现的工作区注册成稳定 Project。必须先把
+      // 刷新后的项目清单发布给 catalog，再显示 Git 行；否则中间一帧 row.project
+      // 为空，想法 / 新建会话 / 更多操作都会暂时消失。
       const next = await api.projects.list();
       setProjects(next);
+      setWorktreesByProject((prev) => ({ ...prev, [projectId]: entries }));
+      setBranchByProject((prev) => ({ ...prev, [projectId]: branchInfo.current }));
     } catch { setWorktreesByProject((prev) => ({ ...prev, [projectId]: [] })); }
   }
 

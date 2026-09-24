@@ -212,7 +212,7 @@ export function ActiveSessionsTree(props: {
 								title={t("projectIdeas.title")}
 								onClick={(event) => {
 									event.stopPropagation();
-									props.actions.projects.manageIdeas(projectId);
+									props.actions.projects.manageIdeas({ kind: "workspace", workspaceId: projectId });
 								}}
 							>
 								<Lightbulb size={12} aria-hidden="true" />

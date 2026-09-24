@@ -12,7 +12,7 @@ import { twMerge } from "tailwind-merge";
 // 已弃用（见本文件 doesNotMatch 断言防回退）。
 // 本测试锁定：三棵树的行 hover 让位宽度与按钮浮层模式不被破坏。
 // 注：WorktreeTree 用命名组 /workspace-row（主/子行共用 workspaceActionPaddingClass
-// 裁剪出入 52px 让位）；SidebarContent 的 aside 已不再需要 @container 容器查询锚点。
+// 裁剪出 80px 让位）；SidebarContent 的 aside 已不再需要 @container 容器查询锚点。
 
 const read = (p) => readFileSync(p, "utf8");
 
@@ -66,15 +66,17 @@ test("session rows yield to hover actions on narrow sidebar", () => {
 
 test("worktree rows yield to hover actions on narrow sidebar", () => {
 	const src = read("src/renderer/src/components/sidebar/WorktreeTree.tsx");
-	// 主工作区行与子行共用同一让位变量：2 按钮（pi/匿名）→ 52px 留白。
+	// 主工作区行与子行共用同一让位变量：想法 / 新建 / 更多 3 个按钮 → 80px 留白。
 	// 改版后用命名组 /workspace-row，不再用 @max-[255px] 容器查询门控（与子行保持一致）。
 	assert.match(
 		src,
-		/workspaceActionPaddingClass =\s*\n\s*"group-hover\/workspace-row:pr-\[52px\] group-focus-within\/workspace-row:pr-\[52px\]"/,
+		/workspaceActionPaddingClass =\s*\n\s*"group-hover\/workspace-row:pr-\[80px\] group-focus-within\/workspace-row:pr-\[80px\]"/,
 	);
 	assert.match(src, /conversation-body min-w-0 flex-1 transition-\[padding-right\]/);
 	// 子行按钮同样接入让位变量（workspaceSelectClass 带 transition-[…,padding-right]）
-	assert.match(src, /workspaceActionPaddingClass,[\s\S]*?childActionsOpen && "pr-\[52px\]"/);
+	assert.match(src, /workspaceActionPaddingClass,[\s\S]*?childActionsOpen && "pr-\[80px\]"/);
+	assert.match(src, /manageIdeas\(\{ kind: "workspace", workspaceId: props\.project\.id \}\)/);
+	assert.match(src, /manageIdeas\(\{ kind: "workspace", workspaceId: childProject\.id \}\)/);
 	// 新建 DSH 会话入口已收敛到会话内的后端选择器，工作区行不再提供独立机器人按钮
 	assert.doesNotMatch(src, /createDraftDsh\(props\.project\.id\)/);
 	assert.doesNotMatch(src, /createDraftDsh\(childProject\.id\)/);

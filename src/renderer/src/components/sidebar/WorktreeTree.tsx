@@ -1,4 +1,4 @@
-import { ChevronDown, ChevronRight, Ellipsis, GitBranch, HelpCircle, Plus } from "lucide-react";
+import { ChevronDown, ChevronRight, Ellipsis, GitBranch, HelpCircle, Lightbulb, Plus } from "lucide-react";
 import type { AgentTab, Project, SessionRecord, WorktreeEntry } from "../../../../shared/types";
 import { useAtomValue } from "jotai";
 import type { SidebarController } from "../../hooks/useSidebarController";
@@ -22,7 +22,7 @@ const workspaceSelectClass =
   "flex min-h-7 min-w-0 flex-1 items-center gap-1.5 rounded-md px-1.5 py-0 text-left text-body text-muted-foreground transition-[color,background-color,padding-right] hover:bg-accent hover:text-accent-foreground disabled:cursor-default disabled:hover:bg-transparent disabled:hover:text-muted-foreground";
 const workspaceActionClass = "text-muted-foreground hover:bg-muted hover:text-foreground";
 const workspaceActionPaddingClass =
-  "group-hover/workspace-row:pr-[52px] group-focus-within/workspace-row:pr-[52px]";
+  "group-hover/workspace-row:pr-[80px] group-focus-within/workspace-row:pr-[80px]";
 const workspaceSessionsClass = "min-w-0 basis-[calc(100%-24px)] ml-6 pl-2";
 
 function WorktreeStatusBadge(props: { status?: WorktreeStatus }) {
@@ -50,7 +50,7 @@ function WorktreeStatusBadge(props: { status?: WorktreeStatus }) {
 }
 
 /**
- * 工作区标题操作与普通项目行保持同一呈现：两个等尺寸的 + / ⋯ 浮层按钮。
+ * 工作区标题操作与普通项目行保持同一呈现：想法 / + / ⋯ 三个等尺寸浮层按钮。
  * 子工作区的标题行独立命名为 group，展开后的会话列表不会意外点亮标题操作。
  */
 function WorkspaceRowActions(props: {
@@ -141,7 +141,7 @@ export function WorktreeTree(props: {
               className={cn(
                 "conversation-body min-w-0 flex-1 transition-[padding-right]",
                 workspaceActionPaddingClass,
-                mainActionsOpen && "pr-[52px]",
+                mainActionsOpen && "pr-[80px]",
               )}
             >
               <span className="conversation-title flex min-w-0 items-center gap-1.5">
@@ -161,10 +161,21 @@ export function WorktreeTree(props: {
               </span>
             </span>
           </Button>
-          {/* 工作区标题也复用项目栏的 + / ⋯ 操作；根项目行保留自己的原有入口。 */}
+          {/* 每个工作区都有独立想法入口；根项目行的灯泡则表示跨工作区汇总。 */}
           <WorkspaceRowActions
             menuOpen={mainActionsOpen}
           >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className={workspaceActionClass}
+              aria-label={t("projectIdeas.workspaceEntry")}
+              title={t("projectIdeas.workspaceEntry")}
+              onClick={() => props.actions.projects.manageIdeas({ kind: "workspace", workspaceId: props.project.id })}
+            >
+              <Lightbulb size={13} aria-hidden="true" />
+            </Button>
             <Button
               type="button"
               variant="ghost"
@@ -303,7 +314,7 @@ function WorkspaceTreeRowView(props: {
             "text-control",
             // 与会话行一样，右侧操作显现时通过 padding-right 动画压缩标题，不让文字落在按钮下。
             workspaceActionPaddingClass,
-            childActionsOpen && "pr-[52px]",
+            childActionsOpen && "pr-[80px]",
           )}
           disabled={!childProject}
           onClick={() => childProject && props.actions.projects.select(childProject.id)}
@@ -340,6 +351,17 @@ function WorkspaceTreeRowView(props: {
           <WorkspaceRowActions
             menuOpen={childActionsOpen}
           >
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              className={workspaceActionClass}
+              aria-label={t("projectIdeas.workspaceEntry")}
+              title={t("projectIdeas.workspaceEntry")}
+              onClick={() => props.actions.projects.manageIdeas({ kind: "workspace", workspaceId: childProject.id })}
+            >
+              <Lightbulb size={13} aria-hidden="true" />
+            </Button>
             <Button
               type="button"
               variant="ghost"

@@ -703,7 +703,7 @@ export function ProjectContextMenu(props: {
 			</DropdownMenuItem>
 			<DropdownMenuItem onSelect={props.onManageIdeas}>
 				<Lightbulb className="size-3.5" aria-hidden="true" />
-				{t("projectIdeas.title")}
+				{t("projectIdeas.workspaceEntry")}
 			</DropdownMenuItem>
 			{/* 内置聊天项目没有 .pi/.agents 资源目录，不暴露项目管理入口，避免打开即报
 			    "Chat 项目不支持项目级资源"（由弹窗本体兜底） */}

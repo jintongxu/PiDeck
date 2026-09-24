@@ -55,6 +55,7 @@ import { AppBootstrap } from "./components/app/AppBootstrap";
 import { SettingsFeatureRoot } from "./components/app/SettingsFeatureRoot";
 import { AutomationModal } from "./components/automation/AutomationModal";
 import { ProjectIdeasModal } from "./components/projectIdeas/ProjectIdeasModal";
+import { ProjectIdeasOverview } from "./components/projectIdeas/ProjectIdeasOverview";
 import { useRename } from "./hooks/useRename";
 import { useProjectRuntimeCapabilities } from "./hooks/useRuntimeCapabilities";
 import { useSessionRuntimeBridge } from "./hooks/useSessionRuntimeBridge";
@@ -3238,7 +3239,7 @@ export function App() {
       },
       manageResources: (project) => setProjectResourcesProject(project),
       manageAutomations: (projectId) => openAutomationModal(projectId),
-      manageIdeas: (projectId) => openProjectIdeasModal(projectId),
+      manageIdeas: (scope) => openProjectIdeasModal(scope),
       toggleWorktree: toggleProjectWorktree,
       copyPath: async (project) => {
         await navigator.clipboard.writeText(project.path);
@@ -4535,6 +4536,7 @@ export function App() {
     <ScratchPadOverlay controller={scratchPad} />
 
     {/* 定时任务与自动化管理中心全功能弹窗（模态呈现，不覆盖会话工作区） */}
+    <ProjectIdeasOverview />
     <ProjectIdeasModal
       refinementModel={settings.projectIdeaRefinementProvider && settings.projectIdeaRefinementModel ? { provider: settings.projectIdeaRefinementProvider, modelId: settings.projectIdeaRefinementModel } : undefined}
       refinementThinkingLevel={settings.projectIdeaRefinementThinkingLevel || undefined}
