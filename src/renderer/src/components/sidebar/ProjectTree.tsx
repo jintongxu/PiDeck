@@ -223,11 +223,11 @@ export function ProjectTree(props: {
             <button
               type="button"
               className="grid size-6 place-items-center rounded-md text-muted-foreground hover:bg-background/80 hover:text-foreground"
-              title={t("projectIdeas.title")}
-              aria-label={t("projectIdeas.title")}
+              title={t("projectIdeas.projectOverviewEntry")}
+              aria-label={t("projectIdeas.projectOverviewEntry")}
               onClick={(event) => {
                 event.stopPropagation();
-                props.actions.projects.manageIdeas(project.id);
+                props.actions.projects.manageIdeas({ kind: "project", projectId: project.id });
               }}
             >
               <Lightbulb size={12} />

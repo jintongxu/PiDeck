@@ -322,6 +322,8 @@ export function useProjectIdeaPlans() {
 		pendingWaitCancelRef.current = null;
 		const id = activeSummarySessionIdRef.current ?? requestStateRef.current?.sessionId;
 		requestStateRef.current = null;
+		setError(null);
+		setSummary(null);
 		setRunning(false);
 		if (id) void cleanupSummarySession(id);
 	}, [cleanupSummarySession]);

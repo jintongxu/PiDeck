@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ClipboardEvent } from "react";
-import { ChevronDown, Eye, EyeOff, Lightbulb, LoaderCircle, Plus, Sparkles, Trash2 } from "lucide-react";
+import { ArrowLeft, ChevronDown, Eye, EyeOff, Lightbulb, LoaderCircle, Plus, Sparkles, Trash2 } from "lucide-react";
 import { useAtom, useAtomValue, useSetAtom } from "jotai";
 import type { AvailableModel, ModelListReport, ProjectIdea, ProjectIdeaKind, ProjectIdeaRefinement, ProjectIdeaStatus } from "../../../../shared/types";
 import {
@@ -8,6 +8,8 @@ import {
 	projectIdeasModalOpenAtom,
 	projectIdeasPrefillAtom,
 	projectIdeasModalProjectIdAtom,
+	projectIdeasModalScopeAtom,
+	openProjectIdeasModalAtom,
 } from "../../atoms/project-idea-atoms";
 import { desktopApi } from "../../desktopApi";
 import { t, type TranslationKey } from "../../i18n";
@@ -50,6 +52,7 @@ import {
 	formatProjectIdeaForExecution,
 } from "../../utils/projectIdeaRefinement";
 import { hasLiveLatestLinkedSession } from "../../utils/projectIdeaSessionLinks";
+import { createProjectIdeaWorkspaceRequestGate } from "../../utils/projectIdeaWorkspaceTransition";
 
 const STATUSES: readonly ProjectIdeaStatus[] = ["inbox", "planned", "doing", "done"];
 const IDEA_KINDS: readonly ProjectIdeaKind[] = ["implementation", "brainstorm"];
@@ -129,10 +132,15 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 	currentSessionContext?: readonly { role: string; text: string }[];
 	availableSessionIds?: readonly string[];
 }) {
-	const [open, setOpen] = useAtom(projectIdeasModalOpenAtom);
+	const [modalOpen, setOpen] = useAtom(projectIdeasModalOpenAtom);
+	const scope = useAtomValue(projectIdeasModalScopeAtom);
+	const open = modalOpen && scope?.kind === "workspace";
+	const requestedIdeaId = scope?.kind === "workspace" ? scope.ideaId : undefined;
+	const overviewProjectId = scope?.kind === "workspace" ? scope.overviewProjectId : undefined;
 	const projectId = useAtomValue(projectIdeasModalProjectIdAtom);
 	const prefill = useAtomValue(projectIdeasPrefillAtom);
 	const close = useSetAtom(closeProjectIdeasModalAtom);
+	const openProjectIdeas = useSetAtom(openProjectIdeasModalAtom);
 	const [ideasByProject, setIdeasByProject] = useAtom(projectIdeasByProjectAtom);
 	const [selectedId, setSelectedId] = useState<string | null>(null);
 	const [filter, setFilter] = useState<ProjectIdeaStatus | "active">("active");
@@ -155,6 +163,8 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 	const [implementationModelsReport, setImplementationModelsReport] = useState<ModelListReport | null>(null);
 	const [implementationModelPickerOpen, setImplementationModelPickerOpen] = useState(false);
 	const bodyRef = useRef<HTMLTextAreaElement | null>(null);
+	const workspaceRequestGateRef = useRef(createProjectIdeaWorkspaceRequestGate());
+	const modelRequestRef = useRef(0);
 	const refinement = useProjectIdeaRefinement();
 	const plans = useProjectIdeaPlans();
 	const ideas = projectId ? ideasByProject[projectId] ?? [] : [];
@@ -176,37 +186,85 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 	selectedIdRef.current = selectedId;
 	const loadRequestRef = useRef(0);
 
+	/** A workspace transition starts with clean editor/model state and cancels private runtimes. */
+	const resetWorkspaceState = useCallback(() => {
+		loadRequestRef.current += 1;
+		workspaceRequestGateRef.current.invalidate();
+		modelRequestRef.current += 1;
+		refinement.cancel();
+		plans.cancel();
+		setSelectedId(null);
+		setFilter("active");
+		setDraft(emptyDraft());
+		setEditing(false);
+		setParentDraft(null);
+		setPendingDelete(null);
+		setBodyPreview(false);
+		setUploadingImage(false);
+		setRefinementDraft(undefined);
+		setRefinementOpen(false);
+		setRefinementUseContext(false);
+		setSaveState("idle");
+		setExecutingIdeaId(null);
+		setImplementationModel(undefined);
+		setImplementationThinkingLevel(undefined);
+		setImplementationThinkingConfirmed(false);
+		setStartingPlansSource(false);
+		setImplementationModels([]);
+		setImplementationModelsReport(null);
+		setImplementationModelPickerOpen(false);
+	}, [plans.cancel, refinement.cancel]);
+
 	const load = useCallback(async (id: string) => {
 		const requestId = loadRequestRef.current + 1;
 		loadRequestRef.current = requestId;
 		const result = await desktopApi.projects.ideas.list(id);
 		if (loadRequestRef.current !== requestId || projectId !== id) return;
 		setIdeasByProject((current) => ({ ...current, [id]: result }));
+		const requestedIdea = requestedIdeaId ? result.find((idea) => idea.id === requestedIdeaId) : undefined;
+		if (requestedIdeaId) setFilter(requestedIdea?.status === "done" ? "done" : "active");
 		setSelectedId((previous) => {
 			if (prefill?.projectId === id) return null;
+			if (requestedIdeaId) return requestedIdea?.id ?? result[0]?.id ?? null;
 			return previous && result.some((idea) => idea.id === previous) ? previous : result[0]?.id ?? null;
 		});
-	}, [prefill?.projectId, projectId, setIdeasByProject]);
+	}, [prefill?.projectId, projectId, requestedIdeaId, setIdeasByProject]);
 
 	useEffect(() => {
 		if (!open || !projectId) return;
-		setFilter("active");
+		resetWorkspaceState();
+		workspaceRequestGateRef.current.begin(projectId);
+	}, [open, projectId, resetWorkspaceState]);
+
+	useEffect(() => {
+		if (!open || !projectId) return;
+		if (!requestedIdeaId) setFilter("active");
 		void load(projectId).catch(() => undefined);
 		return () => {
 			loadRequestRef.current += 1;
 		};
-	}, [load, open, projectId]);
+	}, [load, open, projectId, requestedIdeaId]);
 
 	useEffect(() => {
 		if (!open || !projectId) return;
-		void desktopApi.projects.listModelsReport(projectId ?? undefined, false).then((report) => {
+		const token = workspaceRequestGateRef.current.capture(projectId);
+		const requestId = modelRequestRef.current + 1;
+		modelRequestRef.current = requestId;
+		void desktopApi.projects.listModelsReport(projectId, false).then((report) => {
+			if (modelRequestRef.current !== requestId || !workspaceRequestGateRef.current.isCurrent(token)) return;
 			setImplementationModels(report.models);
 			setImplementationModelsReport(report);
 		}).catch(() => undefined);
+		return () => { modelRequestRef.current += 1; };
 	}, [open, projectId]);
 
 	const refreshImplementationModels = useCallback(() => {
-		void desktopApi.projects.listModelsReport(projectId ?? undefined, true).then((report) => {
+		if (!projectId) return;
+		const token = workspaceRequestGateRef.current.capture(projectId);
+		const requestId = modelRequestRef.current + 1;
+		modelRequestRef.current = requestId;
+		void desktopApi.projects.listModelsReport(projectId, true).then((report) => {
+			if (modelRequestRef.current !== requestId || !workspaceRequestGateRef.current.isCurrent(token)) return;
 			setImplementationModels(report.models);
 			setImplementationModelsReport(report);
 		}).catch(() => undefined);
@@ -269,21 +327,25 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 	}, []);
 
 	const handleBodyPaste = useCallback(async (event: ClipboardEvent<HTMLTextAreaElement>) => {
+		if (!projectId) return;
 		const image = Array.from(event.clipboardData.items).find((item) => item.kind === "file" && item.type.startsWith("image/"));
 		if (!image) return;
 		const file = image.getAsFile();
 		if (!file) return;
+		const token = workspaceRequestGateRef.current.capture(projectId);
+		if (!token) return;
 		event.preventDefault();
 		setUploadingImage(true);
 		try {
 			const url = await desktopApi.projects.ideas.uploadImage(await dataUrlFromBlob(file));
+			if (!workspaceRequestGateRef.current.isCurrent(token)) return;
 			insertBodyAtSelection(`![${file.name || "image"}](${url})`);
 		} catch {
-			showNotice(t("projectIdeas.imageUploadFailed"), 4000, "error");
+			if (workspaceRequestGateRef.current.isCurrent(token)) showNotice(t("projectIdeas.imageUploadFailed"), 4000, "error");
 		} finally {
-			setUploadingImage(false);
+			if (workspaceRequestGateRef.current.isCurrent(token)) setUploadingImage(false);
 		}
-	}, [dataUrlFromBlob, insertBodyAtSelection]);
+	}, [dataUrlFromBlob, insertBodyAtSelection, projectId]);
 
 	const invalidateConfirmedRefinement = useCallback(() => {
 		setRefinementDraft(undefined);
@@ -306,6 +368,8 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 
 	const acceptRefinement = useCallback(async () => {
 		if (!projectId || !refinementDraft?.summary.trim()) return;
+		const token = workspaceRequestGateRef.current.capture(projectId);
+		if (!token) return;
 		const confirmed = { ...refinementDraft, confirmedAt: Date.now() };
 		try {
 			if (selected) {
@@ -316,6 +380,7 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 					tags: draft.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
 					refinement: confirmed,
 				});
+				if (!workspaceRequestGateRef.current.isCurrent(token)) return;
 				setIdeasByProject((current) => ({ ...current, [projectId]: (current[projectId] ?? []).map((idea) => idea.id === updated.id ? updated : idea) }));
 				setRefinementDraft(updated.refinement);
 				setSaveState("saved");
@@ -335,6 +400,7 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 				...(prefill?.sourceKind ? { sourceKind: prefill.sourceKind } : {}),
 				...(parentDraft ? { derivedFromIdeaId: parentDraft.id } : {}),
 			});
+			if (!workspaceRequestGateRef.current.isCurrent(token)) return;
 			setIdeasByProject((current) => ({ ...current, [projectId]: [idea, ...(current[projectId] ?? [])] }));
 			setSelectedId(idea.id);
 			setParentDraft(null);
@@ -342,12 +408,14 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 			setRefinementDraft(idea.refinement);
 			setSaveState("saved");
 		} catch (reason) {
-			showNotice(projectIdeaError(reason), 5000, "error");
+			if (workspaceRequestGateRef.current.isCurrent(token)) showNotice(projectIdeaError(reason), 5000, "error");
 		}
 	}, [draft, editing, parentDraft, prefill, projectId, refinementDraft, selected, setIdeasByProject]);
 
 	const createIdea = useCallback(async () => {
 		if (!projectId || !draft.title.trim()) return;
+		const token = workspaceRequestGateRef.current.capture(projectId);
+		if (!token) return;
 		setSaveState("saving");
 		try {
 			const idea = await desktopApi.projects.ideas.create({
@@ -361,6 +429,7 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 				...(prefill?.sourceKind ? { sourceKind: prefill.sourceKind } : {}),
 				...(parentDraft ? { derivedFromIdeaId: parentDraft.id } : {}),
 			});
+			if (!workspaceRequestGateRef.current.isCurrent(token)) return;
 			setIdeasByProject((current) => ({ ...current, [projectId]: [idea, ...(current[projectId] ?? [])] }));
 			setSelectedId(idea.id);
 			setParentDraft(null);
@@ -369,44 +438,55 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 			setDraft(emptyDraft());
 			setSaveState("saved");
 		} catch (reason) {
+			if (!workspaceRequestGateRef.current.isCurrent(token)) return;
 			setSaveState("error");
 			showNotice(projectIdeaError(reason), 5000, "error");
 		}
 	}, [draft, parentDraft, prefill, projectId, setIdeasByProject]);
 
 	const save = useCallback(async () => {
-		if (!selected) return;
+		if (!selected || !projectId) return;
+		const token = workspaceRequestGateRef.current.capture(projectId);
+		if (!token) return;
 		setSaveState("saving");
 		try {
-			const updated = await desktopApi.projects.ideas.update(selected.id, projectId ?? "", {
+			const updated = await desktopApi.projects.ideas.update(selected.id, projectId, {
 				title: draft.title,
 				body: draft.body,
 				kind: draft.kind,
 				tags: draft.tags.split(",").map((tag) => tag.trim()).filter(Boolean),
 				refinement: refinementDraft?.confirmedAt ? refinementDraft : null,
 			});
-			if (projectId) setIdeasByProject((current) => ({ ...current, [projectId]: (current[projectId] ?? []).map((idea) => idea.id === updated.id ? updated : idea) }));
+			if (!workspaceRequestGateRef.current.isCurrent(token)) return;
+			setIdeasByProject((current) => ({ ...current, [projectId]: (current[projectId] ?? []).map((idea) => idea.id === updated.id ? updated : idea) }));
 			setRefinementDraft(updated.refinement);
 			setSaveState("saved");
 			setEditing(false);
 			setBodyPreview(true);
 		} catch (reason) {
+			if (!workspaceRequestGateRef.current.isCurrent(token)) return;
 			setSaveState("error");
 			showNotice(projectIdeaError(reason), 5000, "error");
 		}
 	}, [draft, projectId, refinementDraft, selected, setIdeasByProject]);
 
 	const changeStatus = useCallback(async (idea: ProjectIdea, status: ProjectIdeaStatus) => {
+		if (!projectId) return;
+		const token = workspaceRequestGateRef.current.capture(projectId);
+		if (!token) return;
 		try {
-			const updated = await desktopApi.projects.ideas.update(idea.id, projectId ?? "", { status });
-			if (projectId) setIdeasByProject((current) => ({ ...current, [projectId]: (current[projectId] ?? []).map((item) => item.id === updated.id ? updated : item) }));
+			const updated = await desktopApi.projects.ideas.update(idea.id, projectId, { status });
+			if (!workspaceRequestGateRef.current.isCurrent(token)) return;
+			setIdeasByProject((current) => ({ ...current, [projectId]: (current[projectId] ?? []).map((item) => item.id === updated.id ? updated : item) }));
 		} catch (reason) {
-			showNotice(projectIdeaError(reason), 5000, "error");
+			if (workspaceRequestGateRef.current.isCurrent(token)) showNotice(projectIdeaError(reason), 5000, "error");
 		}
 	}, [projectId, setIdeasByProject]);
 
 	const continueIdea = useCallback(async (idea: ProjectIdea) => {
 		if (!projectId) return;
+		const token = workspaceRequestGateRef.current.capture(projectId);
+		if (!token) return;
 		const prompt = idea.kind === "brainstorm"
 			? formatProjectIdeaForDiscussion({ title: idea.title, body: idea.body, refinement: idea.refinement })
 			: t("projectIdeas.continuePrompt", { title: idea.title, body: idea.body });
@@ -421,29 +501,33 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 			let sessionId: string | null = null;
 			try {
 				sessionId = (await onBrainstorm?.(projectId, prompt, refinementModel, refinementThinkingLevel)) ?? null;
-				if (!sessionId) return;
+				if (!sessionId || !workspaceRequestGateRef.current.isCurrent(token)) return;
 				const linkedSessionIds = Array.from(new Set([...idea.linkedSessionIds, sessionId]));
 				const updated = await desktopApi.projects.ideas.update(idea.id, projectId, {
 					linkedSessionIds,
 					status: "doing",
 				});
+				if (!workspaceRequestGateRef.current.isCurrent(token)) return;
 				setIdeasByProject((current) => ({
 					...current,
 					[projectId]: (current[projectId] ?? []).map((item) => item.id === updated.id ? updated : item),
 				}));
 			} catch (reason) {
-				showNotice(projectIdeaError(reason), 5000, "error");
+				if (workspaceRequestGateRef.current.isCurrent(token)) showNotice(projectIdeaError(reason), 5000, "error");
 				return;
 			}
 		} else {
 			onContinue?.(projectId, prompt);
 		}
+		if (!workspaceRequestGateRef.current.isCurrent(token)) return;
 		close();
 	}, [availableSessionIds, close, onBrainstorm, onContinue, onPlansStarted, projectId, refinementModel, refinementThinkingLevel, setIdeasByProject]);
 
 	const executeIdea = useCallback(async (idea: ProjectIdea) => {
 		const snapshotRefinement = cloneRefinement(refinementDraft);
 		if (!projectId || !onExecute || !snapshotRefinement?.confirmedAt || !draft.title.trim() || executionInFlight) return;
+		const token = workspaceRequestGateRef.current.capture(projectId);
+		if (!token) return;
 		const snapshot = {
 			ideaId: idea.id,
 			title: draft.title,
@@ -463,7 +547,7 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 				title: snapshot.title,
 				refinement: snapshot.refinement,
 			}));
-			if (!targetSessionId) return;
+			if (!targetSessionId || !workspaceRequestGateRef.current.isCurrent(token)) return;
 			const stillCurrent = selectedIdRef.current === snapshot.ideaId
 				&& refinementTargetKeyRef.current === snapshot.targetKey
 				&& draftRef.current.title === snapshot.title
@@ -479,18 +563,23 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 				status: "doing",
 				linkedSessionIds,
 			});
+			if (!workspaceRequestGateRef.current.isCurrent(token)) return;
 			setIdeasByProject((current) => ({ ...current, [projectId]: (current[projectId] ?? []).map((item) => item.id === updated.id ? updated : item) }));
 			close();
 		} catch (reason) {
-			showNotice(projectIdeaError(reason), 5000, "error");
-			void load(projectId).catch(() => undefined);
+			if (workspaceRequestGateRef.current.isCurrent(token)) {
+				showNotice(projectIdeaError(reason), 5000, "error");
+				void load(projectId).catch(() => undefined);
+			}
 		} finally {
-			setExecutingIdeaId((current) => current === snapshot.ideaId ? null : current);
+			if (workspaceRequestGateRef.current.isCurrent(token)) setExecutingIdeaId((current) => current === snapshot.ideaId ? null : current);
 		}
 	}, [draft, executionInFlight, load, onExecute, projectId, refinementDraft, refinementTargetKey, setIdeasByProject]);
 
 	const extractPlans = useCallback(async () => {
 		if (!projectId || !selected || selected.kind !== "brainstorm" || !latestLinkedSessionId || !hasLiveLatestLinkedSession(selected.linkedSessionIds, availableSessionIds) || plans.running || startingPlansSource) return;
+		const token = workspaceRequestGateRef.current.capture(projectId);
+		if (!token) return;
 		const sourceIdeaId = selected.id;
 		setStartingPlansSource(true);
 		try {
@@ -502,19 +591,22 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 				...(refinementModel ? { model: refinementModel } : {}),
 				...(refinementThinkingLevel ? { thinkingLevel: refinementThinkingLevel } : {}),
 				onCompleted: (summary) => {
-					if (selectedIdRef.current !== sourceIdeaId) return;
+					if (!workspaceRequestGateRef.current.isCurrent(token) || selectedIdRef.current !== sourceIdeaId) return;
 					setRefinementDraft(summary);
 					setRefinementOpen(true);
 				},
-				onError: (error) => showNotice(projectIdeaPlansError(error) ?? error, 5000, "error"),
+				onError: (error) => { if (workspaceRequestGateRef.current.isCurrent(token)) showNotice(projectIdeaPlansError(error) ?? error, 5000, "error"); },
 			});
 		} catch (reason) {
-			showNotice(reason instanceof Error ? reason.message : String(reason), 5000, "error");
+			if (workspaceRequestGateRef.current.isCurrent(token)) showNotice(reason instanceof Error ? reason.message : String(reason), 5000, "error");
 		} finally {
-			setStartingPlansSource(false);
+			if (workspaceRequestGateRef.current.isCurrent(token)) setStartingPlansSource(false);
 		}
 	}, [availableSessionIds, latestLinkedSessionId, plans, projectId, refinementModel, refinementThinkingLevel, selected, startingPlansSource]);
 	const remove = useCallback(async (idea: ProjectIdea) => {
+		if (!projectId) return;
+		const token = workspaceRequestGateRef.current.capture(projectId);
+		if (!token) return;
 		if (idea.id === selectedIdRef.current) {
 			// Deleting the selected idea must invalidate any source wait or anonymous
 			// summary runtime before the idea disappears from the local tree.
@@ -526,29 +618,30 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 		try {
 			// Keep descendants untouched: the hierarchy builder treats a missing parent as
 			// a root, so deleting an idea cannot erase or rewrite its follow-ups.
-			await desktopApi.projects.ideas.delete(idea.id, projectId ?? "");
-			if (projectId) setIdeasByProject((current) => ({
+			await desktopApi.projects.ideas.delete(idea.id, projectId);
+			if (!workspaceRequestGateRef.current.isCurrent(token)) return;
+			setIdeasByProject((current) => ({
 				...current,
 				[projectId]: (current[projectId] ?? []).filter((item) => item.id !== idea.id),
 			}));
 			setSelectedId((current) => current === idea.id ? null : current);
 		} catch (reason) {
-			showNotice(projectIdeaError(reason), 5000, "error");
+			if (workspaceRequestGateRef.current.isCurrent(token)) showNotice(projectIdeaError(reason), 5000, "error");
 		}
 	}, [plans.cancel, projectId, refinement.cancel, setIdeasByProject]);
 
 	useEffect(() => {
-		if (!open) {
-			refinement.cancel();
-			plans.cancel();
-		}
-	}, [open, plans.cancel, refinement.cancel]);
+		if (!open) resetWorkspaceState();
+	}, [open, resetWorkspaceState]);
 
 	return (
-		<Dialog open={open} onOpenChange={(next) => { if (!next) { if (executionInFlight) return; refinement.cancel(); plans.cancel(); setPendingDelete(null); setParentDraft(null); setEditing(false); close(); } else setOpen(next); }}>
+		<Dialog open={open} onOpenChange={(next) => { if (!next) { if (executionInFlight) return; resetWorkspaceState(); close(); } else setOpen(next); }}>
 			<DialogContent size="xl" showCloseButton className="flex h-[min(720px,calc(100vh-64px))] max-w-[min(960px,calc(100vw-48px))] flex-col overflow-hidden p-0">
 				<DialogHeader className="border-b border-border-subtle px-6 py-4 text-left">
-					<DialogTitle className="flex items-center gap-2"><Lightbulb className="size-4 text-primary" />{t("projectIdeas.title")}</DialogTitle>
+					<div className="flex items-center gap-2">
+						{overviewProjectId && <Button type="button" size="sm" variant="ghost" disabled={executionInFlight} onClick={() => { resetWorkspaceState(); openProjectIdeas({ kind: "project", projectId: overviewProjectId }); }}><ArrowLeft className="size-3.5" />{t("projectIdeas.backToOverview")}</Button>}
+						<DialogTitle className="flex items-center gap-2"><Lightbulb className="size-4 text-primary" />{t("projectIdeas.title")}</DialogTitle>
+					</div>
 				</DialogHeader>
 				<div className="flex min-h-0 flex-1">
 					<section className="flex w-[38%] min-w-0 flex-col border-r border-border-subtle">

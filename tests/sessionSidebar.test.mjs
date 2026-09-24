@@ -520,6 +520,6 @@ test("activity session rows expose project ideas through the hover action", () =
   assert.match(activeTree, /rowActionsClass/);
   assert.match(activeTree, /group-hover\/row:pointer-events-auto/);
   assert.match(activeTree, /right-8/);
-  assert.match(activeTree, /props\.actions\.projects\.manageIdeas\(projectId\)/);
+  assert.match(activeTree, /props\.actions\.projects\.manageIdeas\(\{ kind: "workspace", workspaceId: projectId \}\)/);
   assert.doesNotMatch(activeTree, /projectIdeasByProjectAtom|desktopApi\.projects\.ideas\.list|ideaRows/);
 });

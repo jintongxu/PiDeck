@@ -16,7 +16,7 @@ export function ProjectIdeaTree({ roots, selectedId, disabled, kindLabel, onSele
  disabled?: boolean;
  kindLabel: (kind: ProjectIdea["kind"]) => string;
  onSelect: (idea: ProjectIdea) => void;
- onAddChild: (idea: ProjectIdea) => void;
+ onAddChild?: (idea: ProjectIdea) => void;
 }) {
  const renderNode = (node: ProjectIdeaTreeNode): ReactNode => (
   <div key={node.idea.id}>
@@ -25,7 +25,7 @@ export function ProjectIdeaTree({ roots, selectedId, disabled, kindLabel, onSele
      <span className="block truncate text-sm font-medium">{node.idea.title}</span>
      <span className="mt-1 block truncate text-xs text-muted-foreground">{kindLabel(node.idea.kind)} · {t(STATUS_LABEL_KEYS[node.idea.status])} · {node.idea.body || t("projectIdeas.noBody")}</span>
     </button>
-    <Button type="button" size="icon" variant="ghost" disabled={disabled} aria-label={t("projectIdeas.addFollowUpAria", { title: node.idea.title })} title={t("projectIdeas.addFollowUp")} onClick={() => onAddChild(node.idea)}><Plus className="size-4" /></Button>
+    {onAddChild && <Button type="button" size="icon" variant="ghost" disabled={disabled} aria-label={t("projectIdeas.addFollowUpAria", { title: node.idea.title })} title={t("projectIdeas.addFollowUp")} onClick={() => onAddChild(node.idea)}><Plus className="size-4" /></Button>}
    </div>
    {node.children.length > 0 && <div className="ml-3 border-l border-border-subtle pl-2">{node.children.map((child) => renderNode(child))}</div>}
   </div>

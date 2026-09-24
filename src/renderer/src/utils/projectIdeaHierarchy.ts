@@ -8,7 +8,7 @@ export type ProjectIdeaTreeNode = {
 	contextOnly: boolean;
 };
 
-export type ProjectIdeaHierarchyFilter = "active" | ProjectIdeaStatus;
+export type ProjectIdeaHierarchyFilter = "all" | "active" | ProjectIdeaStatus;
 
 function compareIdeas(a: { idea: ProjectIdea; index: number }, b: { idea: ProjectIdea; index: number }): number {
 	const updated = b.idea.updatedAt - a.idea.updatedAt;
@@ -66,7 +66,11 @@ export function buildProjectIdeaHierarchy(
 	}
 	for (const id of cycleMembers) parentId.set(id, undefined);
 
-	const matching = (idea: ProjectIdea): boolean => filter === "active" ? idea.status !== "done" : idea.status === filter;
+	const matching = (idea: ProjectIdea): boolean => filter === "all"
+		? true
+		: filter === "active"
+			? idea.status !== "done"
+			: idea.status === filter;
 	const included = new Set<string>();
 	const contextOnly = new Set<string>();
 	const includeChain = (id: string): void => {
