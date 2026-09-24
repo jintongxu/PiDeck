@@ -15,7 +15,7 @@ import {
 	Notification,
 } from "electron";
 import { randomUUID } from "node:crypto";
-import { basename, join } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { createWriteStream, existsSync } from "node:fs";
 import { copyFile, mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { is } from "@electron-toolkit/utils";
@@ -297,6 +297,9 @@ import { SecurityStore } from "./security/SecurityStore";
 import { applyDesktopProxy } from "./settings/DesktopProxy";
 import { GitService } from "./git/GitService";
 import { WorktreeService } from "./git/WorktreeService";
+import { GitOperationCoordinator } from "./git/GitOperationCoordinator";
+import { MainBranchSyncService } from "./git/MainBranchSyncService";
+import { MainBranchSyncScheduler } from "./git/MainBranchSyncScheduler";
 import { ConfigManager } from "./config/ConfigManager";
 import { ConfigBackupManager } from "./config/ConfigBackupManager";
 import { TokendanceCatalogStore } from "./config/tokendanceCatalog";
@@ -339,6 +342,7 @@ import {
 	registerBackgroundsIpc,
 } from "./ipc/backgroundsIpc";
 import { registerGitIpc } from "./ipc/gitIpc";
+import { registerGitMainSyncIpc } from "./ipc/gitMainSyncIpc";
 import { registerStoreIpc } from "./ipc/storeIpc";
 import { registerTerminalIpc } from "./ipc/terminalIpc";
 import { registerScratchPadIpc } from "./ipc/scratchPadIpc";
@@ -440,6 +444,7 @@ let settingsStore: SettingsStore;
 let securityStore: SecurityStore;
 let worktreeService: WorktreeService;
 let gitService: GitService;
+let mainBranchSyncScheduler: MainBranchSyncScheduler | undefined;
 let piLocator: PiLocator;
 let agentManager: AgentManager;
 /** 全局模型 capability snapshot；仅在启动/配置变更时临时拉起 Pi。 */
@@ -2901,6 +2906,49 @@ function registerIpc() {
 		settingsStore,
 		worktreeService,
 	});
+	const gitOperationCoordinator = new GitOperationCoordinator();
+	const toSyncHostPath = (path: string, project?: import("../shared/types").Project): string => {
+		const settings = settingsStore.get();
+		if (process.platform === "win32" && settings.wslEnabled && settings.wslDistro &&
+			(path.startsWith("/") || path.startsWith("\\\\"))) {
+			return toWindowsHostPath(path, { distro: settings.wslDistro });
+		}
+		return path;
+	};
+	const syncService = new MainBranchSyncService({
+		gitService,
+		worktreeService,
+		coordinator: gitOperationCoordinator,
+		getProject: (projectId) => projectStore.get(projectId),
+		toHostPath: toSyncHostPath,
+		isActive: (projectId, worktreePath) => {
+			const target = worktreePath ? toSyncHostPath(worktreePath, projectStore.get(projectId)) : undefined;
+			return (agentManager?.list?.() ?? []).some((tab) => {
+				if (tab.status !== "running" && tab.status !== "starting") return false;
+				if (tab.projectId === projectId) return true;
+				const child = projectStore.get(tab.projectId);
+				if (child?.worktreeParentId !== projectId) return false;
+				if (!target) return true;
+				const normalizePath = (value: string) => {
+					const resolved = resolve(value);
+					return process.platform === "win32" ? resolved.toLowerCase() : resolved;
+				};
+				return normalizePath(toSyncHostPath(tab.cwd, child)) === normalizePath(target);
+			});
+		},
+		log: (message, error) => void appLogger.warn("git", message, { error: error instanceof Error ? error.message : String(error) }),
+	});
+	registerGitMainSyncIpc({ sync: syncService, projectStore, settingsStore, getMainWindow: () => mainWindow });
+	mainBranchSyncScheduler = new MainBranchSyncScheduler(
+		(projectId) => syncService.syncOne(projectId, "schedule", { syncWorktrees: settingsStore.get().gitAutoSyncWorktrees === true }).then((snapshot) => {
+			if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send(ipcChannels.gitMainSyncChanged, snapshot);
+		}),
+		() => projectStore.list().filter((project) => project.kind !== "chat" && !project.worktreeParentId).map((project) => project.id),
+		() => ({ enabled: settingsStore.get().gitAutoSyncEnabled === true, intervalMin: settingsStore.get().gitAutoSyncIntervalMin }),
+		(message, error) => void appLogger.warn("git", message, { error: error instanceof Error ? error.message : String(error) }),
+	);
+	// ProjectStore 完成异步加载后再启动；启动同步入口在 projectStoreReady 赋值处执行。
+	quitCleanup.register("git-main-sync", () => mainBranchSyncScheduler?.stop());
 
 	// Phase 3.7 拆出 systemIpc 后这些可选依赖必须显式注入；
 	// 漏传 extensionManager 会导致 pi:update-check / pi:update 根本不注册。
@@ -3030,6 +3078,7 @@ function registerIpc() {
 			dshHost,
 		},
 		modelCapabilityCache: piModelCapabilityCache,
+		refreshGitMainSyncScheduler: () => mainBranchSyncScheduler?.refresh(),
 		// 内置 TokenDance 模型目录（live fetch + userData 缓存；
 		// 作为一键配置的数据源：目录模型写入 models.json 后由 pi 运行时自行解析）
 		tokendanceCatalog: tokendanceCatalogStore,
@@ -4284,6 +4333,11 @@ app.whenReady().then(async () => {
 	projectStoreReady = projectStoreLoadPromise.catch(() => undefined);
 	void projectStoreLoadPromise
 		.then(async () => {
+			// load() 已完成后才启动 Git scheduler，避免启动首轮看到空项目列表。
+			mainBranchSyncScheduler?.start();
+			if (settingsStore.get().gitAutoSyncOnStartup === true) {
+				void mainBranchSyncScheduler?.tick();
+			}
 			// load() 已丢掉 e2e 临时项目；对应 catalog 映射一并清掉，侧栏会话不会再挂回来。
 			const knownProjectIds = new Set(projectStore.list().map((project) => project.id));
 			const orphanProjectIds = new Set(

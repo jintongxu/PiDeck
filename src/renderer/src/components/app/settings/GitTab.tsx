@@ -124,6 +124,15 @@ export const GitTab = memo(function GitTab(props: GitTabProps) {
 			/>
 			{draft.enableGitManagement && (
 				<>
+					<SettingSwitchRow anchor="git-auto-sync" title={t("settings.gitAutoSync")} description={t("settings.gitAutoSyncDesc")} checked={draft.gitAutoSyncEnabled === true} onChange={(checked) => updateDraft({ gitAutoSyncEnabled: checked })} />
+					{draft.gitAutoSyncEnabled && <>
+						<SettingRow anchor="git-auto-sync-interval" title={t("settings.gitAutoSyncInterval")} description={t("settings.gitAutoSyncIntervalDesc")}>
+							<Input type="number" min={5} max={1440} className="w-28" value={draft.gitAutoSyncIntervalMin} onChange={(e) => updateDraft({ gitAutoSyncIntervalMin: Math.min(1440, Math.max(5, Number(e.target.value) || 5)) })} />
+						</SettingRow>
+						<SettingSwitchRow anchor="git-auto-sync-startup" title={t("settings.gitAutoSyncStartup")} description={t("settings.gitAutoSyncStartupDesc")} checked={draft.gitAutoSyncOnStartup === true} onChange={(checked) => updateDraft({ gitAutoSyncOnStartup: checked })} />
+						<SettingSwitchRow anchor="git-auto-sync-worktrees" title={t("settings.gitAutoSyncWorktrees")} description={t("settings.gitAutoSyncWorktreesDesc")} checked={draft.gitAutoSyncWorktrees === true} onChange={(checked) => updateDraft({ gitAutoSyncWorktrees: checked })} />
+					</>}
+
 					<SettingRow
 						title={
 							<>

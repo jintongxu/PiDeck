@@ -4,6 +4,7 @@ import type { TokendanceAuthMode } from "../shared/tokendance";
 import type { RpcLogBatch, RpcLogEntry } from "../shared/types/rpcLog";
 import type { DshRuntimeStatus, DshRuntimeInstallProgress } from "../shared/types/dshRuntime";
 import type { GitExecutableInfo } from "../shared/types/git";
+import type { GitMainSyncOptions, GitMainSyncSnapshot } from "../shared/types/gitSync";
 import type { DshRunnerNodeInfo, DshRunnerNodeInstallResult } from "../shared/types/dshRunnerNode";
 import type { ImageBlobPayload, ImageGenConfigFile, ImageGenRequest, ImageGenResult, ImageGenSaveResult } from "../shared/types/imagegen";
 import type { CatalogCheckResult, CatalogUpdateResult, CatalogUpdateStatus } from "../shared/types/catalog";
@@ -1241,6 +1242,12 @@ const api = {
 				projectId,
 				repoPath,
 			) as Promise<void>,
+		mainSyncStatus: (projectId: string) =>
+			ipcRenderer.invoke(ipcChannels.gitMainSyncStatus, projectId) as Promise<GitMainSyncSnapshot>,
+		mainSyncNow: (projectId: string, options?: GitMainSyncOptions) =>
+			ipcRenderer.invoke(ipcChannels.gitMainSyncNow, projectId, options) as Promise<GitMainSyncSnapshot>,
+		onMainSyncChanged: (callback: (snapshot: GitMainSyncSnapshot) => void) =>
+			subscribe<GitMainSyncSnapshot>(ipcChannels.gitMainSyncChanged, callback),
 		/** 当前分支相对上游的提交差距（ahead/behind），驱动 push/pull 角标 */
 		aheadBehind: (projectId: string, repoPath?: string) =>
 			ipcRenderer.invoke(
@@ -1268,6 +1275,7 @@ const api = {
 		/** 打开文件选择框挑一个 git 可执行文件；取消返回 null */
 		chooseExecutable: () =>
 			ipcRenderer.invoke(ipcChannels.gitChooseExecutable) as Promise<string | null>,
+
 	},
 	pi: {
 		/**

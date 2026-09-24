@@ -12,6 +12,7 @@ import type {
   GitResourceGroups,
   GitResourceGroupType,
 } from "../../../../shared/types";
+import type { GitMainSyncSnapshot } from "../../../../shared/types/gitSync";
 import { GitPanel } from "../app/GitPanel";
 import { useGitRepoScope } from "../../hooks/useGitRepoScope";
 import { t } from "../../i18n";
@@ -66,6 +67,7 @@ export type GitDrawerApi = {
   pull: (projectId: string, repoPath?: string) => Promise<void>;
   fetch: (projectId: string, repoPath?: string) => Promise<void>;
   aheadBehind: (projectId: string, repoPath?: string) => Promise<GitAheadBehind | null>;
+  mainSyncNow?: (projectId: string) => Promise<GitMainSyncSnapshot>;
   deleteFiles: (projectId: string, paths: string[], repoPath?: string) => Promise<void>;
   branches: (projectId: string, repoPath?: string) => Promise<GitBranchInfo>;
   checkout: (projectId: string, branch: string, repoPath?: string) => Promise<GitBranchInfo>;
@@ -139,6 +141,7 @@ function createScopedGitApi(
     pull: (id: string) => gitApi.pull(id, repoPath),
     fetch: (id: string) => gitApi.fetch(id, repoPath),
     aheadBehind: (id: string) => gitApi.aheadBehind(id, repoPath),
+    mainSyncNow: gitApi.mainSyncNow ? (id: string) => gitApi.mainSyncNow!(id) : undefined,
     deleteFiles: (id: string, paths: string[]) => gitApi.deleteFiles(id, paths, repoPath),
   };
 }
@@ -321,6 +324,7 @@ export function GitDrawerHost(props: GitDrawerHostProps) {
         pull={scopedApi.pull}
         fetch={scopedApi.fetch}
         aheadBehind={scopedApi.aheadBehind}
+        mainSyncNow={(!repo || repo.relativePath === "") ? scopedApi.mainSyncNow : undefined}
         deleteFiles={scopedApi.deleteFiles}
       />
     );
