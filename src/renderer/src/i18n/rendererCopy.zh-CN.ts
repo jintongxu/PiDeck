@@ -60,7 +60,7 @@ export const zhCN = {
   "app.worktreeRemoveConfirmMessage": "确定删除该工作区？对应的分支和目录将被移除，该操作不可撤销。",
   "app.worktreeRemoveBlockedByAgents": "该工作区下有正在运行的 Agent，请先关闭后再删除。",
   "app.worktreeNotGitRepo": "该项目不是 Git 仓库，无法启用工作区模式",
-  "app.worktreeBranchPreview": "将创建同级目录和分支 {name}",
+  "app.worktreeBranchPreview": "将在项目的 .pideck/worktrees 中创建分支 {name}",
   "app.worktreeMainWorkspace": "主工作区",
   "app.worktreeOtherWorkspaces": "其他工作区",
   "app.worktreeBranchLoading": "…",

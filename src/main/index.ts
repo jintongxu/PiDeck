@@ -3285,7 +3285,10 @@ app.whenReady().then(async () => {
 		},
 	});
 	gitService = new GitService();
-	worktreeService = new WorktreeService(mainCopy);
+	worktreeService = new WorktreeService(
+		mainCopy,
+		join(app.getPath("userData"), "managed-worktrees"),
+	);
 	piLocator = new PiLocator(mainCopy);
 	// DSH 用量链路（backend="dsh"）：配置落 $DSH_HOME/usage-probes.json、凭据从
 	// $DSH_HOME/.credentials.yaml 读，与 pi 侧链路（~/.pi/agent）完全同构、互不干扰。
