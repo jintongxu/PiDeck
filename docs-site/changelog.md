@@ -5,6 +5,19 @@
 - [中文 CHANGELOG](https://github.com/ayuayue/PiDeck/blob/main/CHANGELOG.zh-CN.md)
 - [English CHANGELOG](https://github.com/ayuayue/PiDeck/blob/main/CHANGELOG.md)
 
+## v0.7.11
+
+发布时间：2026-09-24
+
+- 🚀 **按工作区管理项目想法与隔离工作树会话**
+- 🚀 **跨工作区 AI 会话标题**
+- 🚀 **项目想法从随笔贯通到正式实现**
+- 🚀 **项目想法图片支持 PicGo 上传**
+- ✨ **工作树生命周期管理更可靠**
+- ✨ **Agent 与错误通知更及时**
+- ✨ **Maestro Plan 审批后可顺畅回到 PiDeck 继续执行**
+- ✨ **移除分叉版项目公告**
+
 ## v0.7.10
 
 发布时间：2026-09-22

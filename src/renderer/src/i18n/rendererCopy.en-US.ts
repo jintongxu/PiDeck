@@ -61,7 +61,7 @@ export const enUS: Record<TranslationKey, string> = {
   "app.worktreeRemoveConfirmMessage": "Remove this workspace? Its branch and directory will be deleted. This cannot be undone.",
   "app.worktreeRemoveBlockedByAgents": "There are running agents in this workspace. Close them before removing.",
   "app.worktreeNotGitRepo": "This project is not a Git repository, cannot enable workspaces",
-  "app.worktreeBranchPreview": "Will create sibling directory and branch {name}",
+  "app.worktreeBranchPreview": "Will create branch {name} under the project's .pideck/worktrees folder",
   "app.worktreeMainWorkspace": "Main workspace",
   "app.worktreeOtherWorkspaces": "Other workspaces",
   "app.worktreeBranchLoading": "…",

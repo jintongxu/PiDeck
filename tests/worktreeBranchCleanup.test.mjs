@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { execFile, execFileSync } from "node:child_process";
-import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
+import { createHash, randomUUID } from "node:crypto";
 import { basename, dirname, join, resolve } from "node:path";
 import { promisify } from "node:util";
 import test from "node:test";
@@ -33,19 +34,21 @@ function compile(filePath, stubs = {}) {
 	return module.exports;
 }
 
-function loadService(execFileImpl = execFile) {
+function loadService(execFileImpl = execFile, managedRoot) {
 	const stubs = {
 		"node:child_process": { execFile: execFileImpl },
-		"node:fs": { existsSync },
+		"node:fs": { appendFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync },
+		"node:os": { tmpdir },
+		"node:crypto": { createHash, randomUUID },
 		"node:path": { basename, dirname, join, resolve },
 		"node:util": { promisify },
 		"../fs/trash": {
 			trashPath: async (path) => rmSync(path, { recursive: true, force: true }),
 		},
-		"../../shared/worktreeSlug": { worktreeSlugify: (value) => value.trim() },
+		"../../shared/worktreeSlug": { worktreeSlugify: (value) => value.trim().replaceAll("/", "-") },
 		"./gitExecutable": { currentGitExecutable: () => "git" },
 	};
-	return new (compile(servicePath, stubs).WorktreeService)();
+	return new (compile(servicePath, stubs).WorktreeService)(undefined, managedRoot);
 }
 
 function git(cwd, ...args) {
@@ -61,6 +64,15 @@ function setupRepository() {
 	writeFileSync(join(root, "README.md"), "fixture\n", "utf8");
 	git(root, "add", "README.md");
 	git(root, "commit", "-m", "fixture");
+	return { temp, root };
+}
+
+function setupEmptyRepository() {
+	const temp = mkdtempSync(join(tmpdir(), "pideck-worktree-empty-repo-"));
+	const root = join(temp, "main-repo");
+	execFileSync("git", ["init", "-b", "main", root]);
+	git(root, "config", "user.email", "test@example.com");
+	git(root, "config", "user.name", "PiDeck Test");
 	return { temp, root };
 }
 
@@ -158,7 +170,7 @@ test("remove() deletes exactly the branch currently bound to the confirmed Git w
 test("create() reuses an orphaned same-name branch left by an older deletion", async () => {
 	const { temp, root } = setupRepository();
 	const branch = "测试2";
-	const expectedPath = join(temp, branch);
+	const expectedPath = join(root, ".pideck", "worktrees", branch);
 	try {
 		git(root, "branch", branch);
 		const service = loadService();
@@ -176,6 +188,114 @@ test("create() reuses an orphaned same-name branch left by an older deletion", a
 		assert.ok(!localBranches(root).includes(branch));
 	} finally {
 		rmSync(temp, { recursive: true, force: true });
+	}
+});
+
+test("create() supports an empty repository without a first commit", async () => {
+	const { temp, root } = setupEmptyRepository();
+	const branch = "empty-workspace";
+	const expectedPath = join(root, ".pideck", "worktrees", branch);
+	try {
+		const created = await loadService().create(root, "project-id", branch);
+
+		assert.equal(created.path, expectedPath);
+		assert.equal(created.branch, branch);
+		assert.equal(existsSync(expectedPath), true);
+		assert.equal(git(expectedPath, "symbolic-ref", "--short", "HEAD"), branch);
+		assert.match(git(expectedPath, "status", "--short", "--branch"), /## empty-workspace/);
+		assert.doesNotThrow(() => git(expectedPath, "rev-parse", "--verify", "HEAD^{commit}"));
+		assert.ok(
+			git(root, "worktree", "list", "--porcelain")
+				.replaceAll("\\", "/")
+				.includes(`worktree ${expectedPath.replaceAll("\\", "/")}`),
+		);
+		assert.equal(localBranches(root).includes(branch), true, "the worktree branch must be visible in Git");
+
+		writeFileSync(join(expectedPath, "child.txt"), "child\n", "utf8");
+		git(expectedPath, "add", "child.txt");
+		git(expectedPath, "commit", "-m", "child");
+		assert.notEqual(git(expectedPath, "rev-parse", "HEAD"), "");
+		assert.throws(
+			() => execFileSync(
+				"git",
+				["rev-parse", "--verify", "HEAD^{commit}"],
+				{ cwd: root, stdio: ["ignore", "ignore", "ignore"] },
+			),
+			"the main unborn branch must stay independent after the child first commit",
+		);
+	} finally {
+		rmSync(temp, { recursive: true, force: true });
+	}
+});
+
+test("create() rejects reusing the main unborn branch in an empty repository", async () => {
+	const { temp, root } = setupEmptyRepository();
+	try {
+		await assert.rejects(
+			() => loadService().create(root, "project-id", "main"),
+			/Worktree operation failed/,
+		);
+		assert.equal(git(root, "worktree", "list", "--porcelain").match(/^worktree /gm)?.length, 1);
+	} finally {
+		rmSync(temp, { recursive: true, force: true });
+	}
+});
+
+test("listAndEnsureBranches creates one linked worktree for each non-main local branch", async () => {
+	const { temp, root } = setupRepository();
+	const service = loadService();
+	try {
+		git(root, "branch", "feature");
+		git(root, "branch", "ui/feature");
+		const entries = await service.listAndEnsureBranches(root);
+
+		assert.deepEqual(Array.from(entries, (entry) => entry.branch).sort(), ["feature", "ui/feature"]);
+		assert.equal(existsSync(join(root, ".pideck", "worktrees", "feature")), true);
+		assert.equal(existsSync(join(root, ".pideck", "worktrees", "ui", "feature")), true);
+		assert.deepEqual(localBranches(root).sort(), ["feature", "main", "ui/feature"]);
+	} finally {
+		for (const [path, branch] of [[join(root, ".pideck", "worktrees", "feature"), "feature"], [join(root, ".pideck", "worktrees", "ui", "feature"), "ui/feature"]]) {
+			if (existsSync(path)) await service.remove(path, root, { branch, managed: true });
+		}
+		rmSync(temp, { recursive: true, force: true });
+	}
+});
+
+test("listAndEnsureBranches repairs an older unborn worktree so its branch is visible", async () => {
+	const { temp, root } = setupEmptyRepository();
+	const branch = "legacy-empty";
+	const worktreePath = join(root, ".pideck", "worktrees", branch);
+	const service = loadService();
+	try {
+		mkdirSync(dirname(worktreePath), { recursive: true });
+		git(root, "worktree", "add", "--orphan", "-b", branch, worktreePath);
+		assert.equal(localBranches(root).includes(branch), false);
+		await service.listAndEnsureBranches(root);
+		assert.equal(localBranches(root).includes(branch), true);
+		assert.match(git(worktreePath, "status", "--short", "--branch"), /## legacy-empty/);
+	} finally {
+		if (existsSync(worktreePath)) await service.remove(worktreePath, root, { branch, managed: true });
+		rmSync(temp, { recursive: true, force: true });
+	}
+});
+
+test("managed worktree storage isolates same-named branches from different repositories", async () => {
+	const first = setupRepository();
+	const second = setupRepository();
+	const managedRoot = join(first.temp, "pideck-managed-worktrees");
+	try {
+		const service = loadService(execFile, managedRoot);
+		const firstCreated = await service.create(first.root, "first", "shared");
+		const secondCreated = await service.create(second.root, "second", "shared");
+
+		assert.notEqual(firstCreated.path, secondCreated.path);
+		assert.ok(firstCreated.path.startsWith(managedRoot));
+		assert.ok(secondCreated.path.startsWith(managedRoot));
+		assert.equal(firstCreated.path.includes(`${basename(first.root)}\\shared`), false);
+		assert.equal(secondCreated.path.includes(`${basename(second.root)}\\shared`), false);
+	} finally {
+		rmSync(first.temp, { recursive: true, force: true });
+		rmSync(second.temp, { recursive: true, force: true });
 	}
 });
 

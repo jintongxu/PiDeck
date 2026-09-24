@@ -381,13 +381,22 @@ export function registerGitIpc({
 		async (_event, projectId: string) => {
 			const project = projectStore.get(projectId);
 			if (!project) throw new Error(`Project not found: ${projectId}`);
-			const entries = await worktreeService.list(projectHostPath(project));
+			const children = typeof projectStore.listWorktreeChildren === "function"
+				? projectStore.listWorktreeChildren(projectId)
+				: [];
+			const protectedBranches = children.flatMap((child) =>
+				child.worktreeBranchManaged && child.worktreeBranch ? [child.worktreeBranch] : [],
+			);
+			const hostProjectPath = projectHostPath(project);
+			const entries = typeof worktreeService.listAndEnsureBranches === "function"
+				? await worktreeService.listAndEnsureBranches(hostProjectPath, protectedBranches)
+				: await worktreeService.list(hostProjectPath);
 			const storedEntries = entries.map((entry) => ({
 				...entry,
 				path: projectStoredPath(entry.path, project),
 			}));
-			// 扫描只同步真实分支绑定，不能从目录名/分支名推断 PiDeck 所有权；仅创建链会写
-			// managed=true。ProjectStore 会在分支未变化时保留已有的显式所有权标记。
+			// Git worktree 是事实源：扫描只同步真实 path↔branch 绑定，不能从目录名推断分支。
+			// managed=true 只由创建链写入；同父项目、同路径、同分支时 ProjectStore 会保留它。
 			for (const wt of storedEntries) {
 				await projectStore.add(
 					wt.path,
@@ -395,6 +404,22 @@ export function registerGitIpc({
 					project.environment === "wsl" ? "wsl" : "windows",
 					{ branch: wt.branch, managed: false },
 				);
+			}
+			// 外部删除的 worktree 不应继续作为应用工作区；managed binding 留下是为了让
+			// 分支删除失败时提供安全重试入口，不能在扫描时把它误删掉。
+			if (typeof projectStore.listWorktreeChildren === "function") {
+				const livePaths = new Set(storedEntries.map((entry) => entry.path));
+				for (const child of children) {
+					if (livePaths.has(child.path)) continue;
+					const branchStillExists = child.worktreeBranch && typeof worktreeService.hasBranch === "function"
+						? await worktreeService.hasBranch(hostProjectPath, child.worktreeBranch)
+						: false;
+					// 分支已经不存在时，旧项目记录也必须清掉；分支仍存在且 managed=true
+					// 则保留为删除失败的安全重试入口，且已被 protectedBranches 排除自动重建。
+					if (!child.worktreeBranchManaged || !branchStillExists) {
+						await projectStore.remove(child.id);
+					}
+				}
 			}
 			return storedEntries;
 		},
@@ -405,19 +430,45 @@ export function registerGitIpc({
 		async (_event, projectId: string, branchName: string) => {
 			const project = projectStore.get(projectId);
 			if (!project) throw new Error(`Project not found: ${projectId}`);
+			let createdInfo: { path: string; branch: string } | null = null;
 			try {
-				const info = await worktreeService.create(projectHostPath(project), projectId, branchName);
-				const storedPath = projectStoredPath(info.path, project);
+				createdInfo = await worktreeService.create(projectHostPath(project), projectId, branchName);
+				const storedPath = projectStoredPath(createdInfo.path, project);
 				await projectStore.add(
 					storedPath,
 					projectId,
 					project.environment === "wsl" ? "wsl" : "windows",
-					{ branch: info.branch, managed: true },
+					{ branch: createdInfo.branch, managed: true },
 				);
-				return { ...info, path: storedPath };
+				return { ...createdInfo, path: storedPath };
 			} catch (error) {
-				// reset 失败且补偿清理也失败时，service 会携带待清理 binding；先持久化，
-				// 让侧栏保留安全重试入口，而不是留下永远阻塞同名创建的无主分支。
+				// Git 创建已经成功但 ProjectStore 写入失败时必须反向清理 Git，避免出现
+				// “界面报失败、目录和分支却已存在”的半成功状态。清理失败则保留精确 binding，
+				// 让下次扫描/删除提供安全重试入口。
+				if (createdInfo) {
+					try {
+						const cleaned = await worktreeService.remove(
+							createdInfo.path,
+							projectHostPath(project),
+							{ branch: createdInfo.branch, managed: true },
+						);
+						if (!cleaned) throw new Error("Created worktree cleanup was rejected by Git");
+					} catch (cleanupError) {
+						await projectStore.add(
+							projectStoredPath(createdInfo.path, project),
+							projectId,
+							project.environment === "wsl" ? "wsl" : "windows",
+							{ branch: createdInfo.branch, managed: true },
+						);
+						void appLogger.error("git", "Worktree create compensation failed", {
+							projectId,
+							branch: createdInfo.branch,
+							worktreePath: createdInfo.path,
+							error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+						});
+					}
+				}
+				// reset/创建阶段补偿清理失败时，service 会携带待清理 binding；先持久化。
 				if (
 					typeof error === "object" &&
 					error !== null &&
@@ -433,6 +484,11 @@ export function registerGitIpc({
 						{ branch: error.branch, managed: true },
 					);
 				}
+				void appLogger.error("git", "Worktree create failed", {
+					projectId,
+					branchName,
+					error: error instanceof Error ? error.message : String(error),
+				});
 				throw error;
 			}
 		},
