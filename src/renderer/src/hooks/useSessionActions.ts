@@ -320,6 +320,7 @@ export function useSessionActions(options: UseSessionActionsOptions) {
         projectId,
         title: backend === "dsh" ? `${project.name} DSH` : `${project.name} agent`,
         backend,
+        titlePlaceholder: true,
         ...preferences,
       });
       upsertSession(session);

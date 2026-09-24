@@ -217,6 +217,8 @@ export type CreateSessionDraftInput = {
 	agentPreset?: string;
 	/** 仅该会话启用 PiDeck 内置 AI 标题旁路。 */
 	autoSessionTitle?: boolean;
+	/** 创建时使用的默认占位标题；显式传入真实标题时为 false。 */
+	titlePlaceholder?: boolean;
 };
 
 /** 启动前选择的模型与思考级别；显式值优先于 pi 配置默认值。 */
@@ -225,6 +227,8 @@ export type SessionLaunchPreferences = {
 	thinkingLevel?: string;
 	/** 仅该会话启用 PiDeck 内置 AI 标题旁路。 */
 	autoSessionTitle?: boolean;
+	/** 创建时使用的默认占位标题；显式传入真实标题时为 false。 */
+	titlePlaceholder?: boolean;
 };
 
 /**

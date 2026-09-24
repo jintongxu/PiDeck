@@ -227,6 +227,36 @@ test("a non-authoritative first-message fallback must not overwrite an existing 
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("an older scan cannot roll back a newer AI-generated catalog title", async () => {
+  const { SessionCatalog } = loadCatalog();
+  const dir = await mkdtemp(join(tmpdir(), "pideck-catalog-title-stale-scan-"));
+  try {
+    const fetcher = async () => ({ name: "Old session_info title", valid: true, nameFromSessionInfo: true });
+    const catalog = new SessionCatalog(join(dir, "sessions.json"), {}, undefined, fetcher);
+    await catalog.load();
+    const [initial] = await catalog.mergeScanned("project-1", [
+      lightSummary({ name: "Initial title", updatedAt: 100 }),
+    ]);
+    assert.equal(initial.title, "Initial title");
+
+    await catalog.update(initial.id, { title: "AI summarized title", updatedAt: 200 });
+    const [afterStaleScan] = await catalog.mergeScanned("project-1", [
+      lightSummary({ updatedAt: 100 }),
+    ]);
+    assert.equal(afterStaleScan.title, "AI summarized title");
+    assert.equal(afterStaleScan.updatedAt, 200);
+
+    // Equal file mtimes are also not enough to outrank a runtime title mutation.
+    const [afterEqualTimestampScan] = await catalog.mergeScanned("project-1", [
+      lightSummary({ updatedAt: 200 }),
+    ]);
+    assert.equal(afterEqualTimestampScan.title, "AI summarized title");
+    assert.equal(afterEqualTimestampScan.updatedAt, 200);
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});
 // 不是有效 Pi 会话。fetcher 校验会话头时返回 valid:false，mergeScanned 必须拒绝索引该文件。
 // 存量 subagent-artifacts 目录内的脏条目由路径清洗（已有「drops legacy subagent-artifacts
 // entries」测试覆盖）；此处覆盖更一般的情况——产物落在目录过滤够不到的位置时，

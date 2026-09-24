@@ -292,19 +292,46 @@ function readSessionId(ctx: ExtensionContext): string | undefined {
 	}
 }
 
+function looksLikePiSessionFileStem(name: string): boolean {
+	return /^\d{4}-\d{2}-\d{2}T\d{2}[-:]\d{2}[-:]\d{2}(?:[.,-]\d+)?Z(?:_[A-Za-z0-9-]+)?$/.test(
+		name.trim(),
+	);
+}
+
+function isMeaningfulSessionName(name: string | undefined): boolean {
+	const normalized = name?.trim() ?? "";
+	if (!normalized || looksLikePiSessionFileStem(normalized)) return false;
+	// PiDeck creates a visible `<project> agent` placeholder before the first
+	// prompt. It is not a user rename and must not suppress AI naming.
+	if (/^(?:agent|assistant|新会话|新对话)$/i.test(normalized)) return false;
+	if (/(?:^|\s)(?:agent|assistant)$/i.test(normalized)) return false;
+	return true;
+}
+
 function hasSessionName(pi: ExtensionAPI): boolean {
 	try {
-		const name = pi.getSessionName()?.trim() ?? "";
-		if (!name) return false;
-		// PiDeck creates a visible `<project> agent` placeholder before the first
-		// prompt. It is not a user rename and must not suppress AI naming; only the
-		// exact generic names or the known trailing placeholder suffix are ignored.
-		if (/^(?:agent|assistant|新会话|新对话)$/i.test(name)) return false;
-		if (/(?:^|\s)(?:agent|assistant)$/i.test(name)) return false;
-		return true;
+		return isMeaningfulSessionName(pi.getSessionName());
 	} catch {
 		return false;
 	}
+}
+
+/**
+ * session_info_changed 也会用于会话文件首次物化等元数据变化。只有明确的名称变更
+ * 才视为用户介入；时间戳文件名仍是 Pi 的未命名占位，不得取消 AI 标题旁路。
+ */
+function isManualSessionNameChange(event: unknown, pi: ExtensionAPI): boolean {
+	if (isRecord(event)) {
+		for (const key of ["name", "sessionName"] as const) {
+			if (!Object.prototype.hasOwnProperty.call(event, key)) continue;
+			const value = event[key];
+			// 显式清空也属于用户意图；缺少名称字段才是纯元数据变化。
+			if (value === null || value === undefined || value === "") return true;
+			if (typeof value === "string") return isMeaningfulSessionName(value);
+			return true;
+		}
+	}
+	return hasSessionName(pi);
 }
 
 async function withTimeout<T>(
@@ -474,9 +501,10 @@ export default function piDeckSessionTitle(pi: ExtensionAPI): void {
 		if (enabled && eligible && titleModel) primeAuth(ctx, titleModel, true);
 	});
 
-	pi.on("session_info_changed", (_event, _ctx) => {
-		if (applyingAutoTitle) return;
-		// 任何外部 session_info 变化都视为用户/宿主介入，包括清空标题；手动意图优先于自动命名。
+	pi.on("session_info_changed", (event, _ctx) => {
+		if (applyingAutoTitle || !isManualSessionNameChange(event, pi)) return;
+		// 只有真实名称变更（含显式清空）才让用户/宿主意图优先；文件首次物化等
+		// 元数据事件以及 Pi 的时间戳文件名不能永久关闭自动命名。
 		manualNameTouched = true;
 		nameRevision += 1;
 		cancelPending();

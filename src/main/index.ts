@@ -2580,10 +2580,10 @@ function registerIpc() {
 				if (firstLine) {
 					// 自动命名只取首行，不在存储层硬截断；标题展示由侧栏窗口负责钳制，
 					// hover 时滚动展示全文。否则 "(fork)" 或英文单词可能被写成残片。
-					await sessionCatalog.update(sessionId, {
+					const updated = await sessionCatalog.update(sessionId, {
 						title: firstLine,
 					});
-					mainWindow?.webContents.send(ipcChannels.sessionsCatalogRefreshed, { projectId: entry.projectId });
+					mainWindow?.webContents.send(ipcChannels.sessionsCatalogRefreshed, { projectId: updated.projectId });
 				}
 			}
 			// 生图独立持久化：imagegen 后端会话（可能残留无意义的 pi filePath）与无 pi 会话文件的
@@ -3639,10 +3639,11 @@ app.whenReady().then(async () => {
 		(dshSessionId, title) => {
 			const entry = sessionCatalog?.findByDshSessionId(dshSessionId);
 			if (!entry || entry.title === title) return;
-			void sessionCatalog.update(entry.id, { title }).then(() => {
+			void sessionCatalog.update(entry.id, { title }).then((updated) => {
+				// 以串行 catalog mutation 完成后的 owner 为准；期间扫描可能已修正项目归属。
 				// index.ts 作用域用模块级 mainWindow（本文件没有 getMainWindow 助手）
 				if (mainWindow && !mainWindow.isDestroyed()) {
-					mainWindow.webContents.send(ipcChannels.sessionsCatalogRefreshed, { projectId: entry.projectId });
+					mainWindow.webContents.send(ipcChannels.sessionsCatalogRefreshed, { projectId: updated.projectId });
 				}
 			}).catch((error: unknown) => {
 				void appLogger.warn("session", "DSH title sync to catalog failed", {
@@ -3747,6 +3748,7 @@ app.whenReady().then(async () => {
 				environment: settingsStore.get().wslEnabled ? "wsl" : "native",
 				model: input.model,
 				thinkingLevel: input.thinkingLevel,
+				titlePlaceholder: input.titlePlaceholder,
 			});
 		},
 		createAnonymousSession,
@@ -4082,10 +4084,12 @@ app.whenReady().then(async () => {
 		// pi 默认 sessionName 是文件名时间戳：不能盖掉「新会话」或用户已有标题。
 		if (!entry || entry.title === title) return;
 		if (looksLikePiSessionFileStem(title)) return;
-		void sessionCatalog.update(sessionId, { title }).then(() => {
+		void sessionCatalog.update(sessionId, { title }).then((updated) => {
+			// 以串行 catalog mutation 完成后的 owner 为准，避免旧 entry 快照导致
+			// worktree 会话标题写入后通知了错误的项目。
 			if (mainWindow && !mainWindow.isDestroyed()) {
 				mainWindow.webContents.send(ipcChannels.sessionsCatalogRefreshed, {
-					projectId: entry.projectId,
+					projectId: updated.projectId,
 				});
 			}
 		}).catch((error: unknown) => {

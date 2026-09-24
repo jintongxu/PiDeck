@@ -139,6 +139,9 @@ function createHarness({
 		clearName() {
 			currentName = undefined;
 		},
+		setName(name) {
+			currentName = name;
+		},
 		setCompletion(factory) {
 			nextCompletion = factory;
 		},
@@ -174,6 +177,46 @@ test("PiDeck placeholder title does not suppress first AI session title", async 
   await harness.emit("agent_settled");
   await flushAsyncWork();
   assert.deepEqual(harness.setNames, ["修复登录流程"]);
+});
+
+test("Pi timestamp file stems remain unnamed before and after session_start", async () => {
+	const entries = freshBranch({ user: "修复工作区标题", assistant: "开始排查" });
+	const atStartup = createHarness({
+		entries,
+		titleName: "2026-09-24T08-00-00-000Z_01a01e4a-ea07-4f21-9c9a-2a4c4bbd7e91",
+	});
+	await startFresh(atStartup, entries);
+	await atStartup.emit("agent_settled");
+	await flushAsyncWork();
+	assert.deepEqual(atStartup.setNames, ["修复登录流程"]);
+
+	const afterStartup = createHarness({ entries });
+	await startFresh(afterStartup, entries);
+	afterStartup.setName("2026-09-24T08-00-01-000Z_abc");
+	await afterStartup.emit("agent_settled");
+	await flushAsyncWork();
+	assert.deepEqual(afterStartup.setNames, ["修复登录流程"]);
+});
+
+test("metadata-only and file-stem session_info changes do not cancel AI naming", async () => {
+	let resolveCompletion;
+	const completion = new Promise((resolve) => { resolveCompletion = resolve; });
+	const entries = freshBranch({ user: "归纳其它工作区标题", assistant: "正在处理" });
+	const harness = createHarness({ entries });
+	harness.setCompletion(() => completion);
+	await startFresh(harness, entries);
+	await harness.emit("agent_settled");
+	await flushAsyncWork();
+	const signal = harness.completeCalls[0].options.signal;
+
+	await harness.emit("session_info_changed", { cwd: "C:/project" });
+	harness.setName("2026-09-24T08-00-02-000Z_abc");
+	await harness.emit("session_info_changed", { name: "2026-09-24T08-00-02-000Z_abc" });
+	assert.equal(signal.aborted, false);
+
+	resolveCompletion(assistantMessage([{ type: "text", text: "其它工作区标题归纳" }]));
+	await flushAsyncWork();
+	assert.deepEqual(harness.setNames, ["其它工作区标题归纳"]);
 });
 
 test("首轮 settled 后只用最小独立 context 生成标题并写回 session_info", async () => {
