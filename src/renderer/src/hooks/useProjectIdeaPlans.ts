@@ -7,11 +7,16 @@ import {
 } from "../atoms/session-atoms";
 import { sessionRuntimeBySessionIdAtomFamily } from "../atoms/session-selectors";
 import { desktopApi } from "../desktopApi";
+import { t } from "../i18n";
+import { showNotice } from "../utils/notice";
 import { buildProjectIdeaBrainstormSummaryPrompt, parseProjectIdeaRefinement } from "../utils/projectIdeaRefinement";
 
 type SummaryRequest = {
 	requestId: number;
 	sessionId: string;
+	title: string;
+	targetKey: string;
+	sourceIdeaId: string;
 	baselineAssistantIds: ReadonlySet<string>;
 	onCompleted?: (refinement: ProjectIdeaRefinement) => void;
 	onError?: (error: string) => void;
@@ -143,6 +148,8 @@ export function useProjectIdeaPlans() {
 	const [running, setRunning] = useState(false);
 	const [error, setError] = useState<string | null>(null);
 	const [summary, setSummary] = useState<ProjectIdeaRefinement | null>(null);
+	const [summaryTargetKey, setSummaryTargetKey] = useState<string | null>(null);
+	const [summarySourceIdeaId, setSummarySourceIdeaId] = useState<string | null>(null);
 	const requestRef = useRef(0);
 	const requestStateRef = useRef<SummaryRequest | null>(null);
 	const activeSummarySessionIdRef = useRef<string | null>(null);
@@ -168,13 +175,17 @@ export function useProjectIdeaPlans() {
 		try {
 			const parsed = parseProjectIdeaRefinement(text);
 			setSummary(parsed);
+			setSummaryTargetKey(request.targetKey);
+			setSummarySourceIdeaId(request.sourceIdeaId);
 			setError(null);
 			setRunning(false);
+			showNotice(t("projectIdeas.backgroundPlansCompleted", { title: request.title }), 8000, "info", t("projectIdeas.backgroundTaskCompletedTitle"));
 			request.onCompleted?.(parsed);
 			void cleanupSummarySession(request.sessionId);
 		} catch {
 			setError("PROJECT_IDEA_PLANS_RESPONSE_INVALID");
 			setRunning(false);
+			showNotice(t("projectIdeas.backgroundPlansFailed", { title: request.title }), 8000, "error", t("projectIdeas.backgroundTaskFailedTitle"));
 			request.onError?.("PROJECT_IDEA_PLANS_RESPONSE_INVALID");
 			void cleanupSummarySession(request.sessionId);
 		}
@@ -185,6 +196,8 @@ export function useProjectIdeaPlans() {
 		sourceSessionId: string;
 		title: string;
 		body: string;
+		targetKey: string;
+		sourceIdeaId: string;
 		model?: { provider: string; modelId: string };
 		thinkingLevel?: string;
 		onCompleted?: (refinement: ProjectIdeaRefinement) => void;
@@ -200,6 +213,8 @@ export function useProjectIdeaPlans() {
 		activeSummarySessionIdRef.current = null;
 		setError(null);
 		setSummary(null);
+		setSummaryTargetKey(null);
+		setSummarySourceIdeaId(null);
 		setRunning(true);
 		let createdSummarySessionId: string | null = null;
 		try {
@@ -261,6 +276,9 @@ export function useProjectIdeaPlans() {
 			const request: SummaryRequest = {
 				requestId,
 				sessionId: summarySession.id,
+				title: input.title,
+				targetKey: input.targetKey,
+				sourceIdeaId: input.sourceIdeaId,
 				baselineAssistantIds,
 				onCompleted: input.onCompleted,
 				onError: input.onError,
@@ -310,6 +328,7 @@ export function useProjectIdeaPlans() {
 				setRunning(false);
 				const message = reason instanceof Error ? reason.message : String(reason);
 				setError(message);
+				showNotice(t("projectIdeas.backgroundPlansFailed", { title: input.title }), 8000, "error", t("projectIdeas.backgroundTaskFailedTitle"));
 				input.onError?.(message);
 			}
 			return false;
@@ -324,19 +343,26 @@ export function useProjectIdeaPlans() {
 		requestStateRef.current = null;
 		setError(null);
 		setSummary(null);
+		setSummaryTargetKey(null);
+		setSummarySourceIdeaId(null);
 		setRunning(false);
 		if (id) void cleanupSummarySession(id);
 	}, [cleanupSummarySession]);
 
-	useEffect(() => () => {
-		mountedRef.current = false;
-		requestRef.current += 1;
-		pendingWaitCancelRef.current?.();
-		pendingWaitCancelRef.current = null;
-		requestStateRef.current = null;
-		const id = activeSummarySessionIdRef.current;
-		if (id) void cleanupSummarySession(id);
+	useEffect(() => {
+		mountedRef.current = true;
+		return () => {
+			// The controller is mounted at App scope, so this cleanup runs when the
+			// renderer really exits, not when the project-ideas dialog is closed.
+			mountedRef.current = false;
+			requestRef.current += 1;
+			pendingWaitCancelRef.current?.();
+			pendingWaitCancelRef.current = null;
+			requestStateRef.current = null;
+			const id = activeSummarySessionIdRef.current;
+			if (id) void cleanupSummarySession(id);
+		};
 	}, [cleanupSummarySession]);
 
-	return { summarize, cancel, running, error, summary };
+	return { summarize, cancel, running, error, summary, summaryTargetKey, summarySourceIdeaId };
 }
