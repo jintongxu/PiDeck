@@ -739,6 +739,7 @@ async function activateAnonymousRuntime(
 			wslDistro: session.wslDistro,
 			wslUser: session.wslUser,
 			noSession: true,
+			noTools: input.noTools,
 		});
 		agentId = tab.id;
 		const runtime = sessionRuntimeCoordinator.bindAnonymousRuntime(session.id, tab.id);

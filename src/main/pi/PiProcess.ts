@@ -342,7 +342,7 @@ export class PiProcess extends EventEmitter {
     this.parkedExtensions = [];
   }
 
-  async start(sessionPath?: string, trustOverride?: "approve" | "no-approve", noSession?: boolean) {
+  async start(sessionPath?: string, trustOverride?: "approve" | "no-approve", noSession?: boolean, noTools?: boolean) {
     if (this.proc) return this.rpc!;
 
     // 预检会话文件：旧版 PiDeck 私有 sessionName 头行会让 pi 拒绝加载（exit 1）。
@@ -446,6 +446,7 @@ export class PiProcess extends EventEmitter {
     // 后续信任标志 / session / WSL 路径改写都基于已含 -e 的参数列表
     let finalPiArgs = argsWithBuiltIns;
     if (noSession) finalPiArgs.push("--no-session");
+    if (noTools) finalPiArgs.push("--no-tools");
     if (sessionPath) finalPiArgs.push("--session", sessionPath);
 
     // 用户手动指定的 pi 路径优先于自动检测，解决 npm global、nvm 等路径未在 PATH 中的问题。

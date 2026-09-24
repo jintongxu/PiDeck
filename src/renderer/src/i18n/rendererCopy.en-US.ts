@@ -83,6 +83,7 @@ export const enUS: Record<TranslationKey, string> = {
   "projectIdeas.plansEmpty": "No candidate plan is ready yet. Continue the discussion in this session, then extract again.",
   "projectIdeas.plansInvalid": "The response was not a valid candidate-plan format. Continue the discussion and try again.",
   "projectIdeas.plansSourceEmpty": "The brainstorm session has no completed assistant response yet. Continue the discussion and try again.",
+  "projectIdeas.plansSourceBusy": "The brainstorm session is still responding or waiting for a tool answer. Finish the current turn, then summarize again.",
   "projectIdeas.plansSourceUnavailable": "The brainstorm session is temporarily unavailable. Reopen it and try again.",
   "projectIdeas.plansTimeout": "Plan extraction timed out. Continue the discussion in the session and try again.",
   "projectIdeas.brainstormSummaryTitle": "Summarize as project idea",

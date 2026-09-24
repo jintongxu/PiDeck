@@ -80,6 +80,7 @@ function parseIdeaKind(value: string): ProjectIdeaKind | undefined {
 function projectIdeaPlansError(error: string | null): string | null {
 	if (!error) return null;
 	if (error === "PROJECT_IDEA_PLANS_SOURCE_SESSION_EMPTY") return t("projectIdeas.plansSourceEmpty");
+	if (error === "PROJECT_IDEA_PLANS_SOURCE_SESSION_BUSY") return t("projectIdeas.plansSourceBusy");
 	if (error === "PROJECT_IDEA_PLANS_SOURCE_SESSION_UNAVAILABLE") return t("projectIdeas.plansSourceUnavailable");
 	if (error === "PROJECT_IDEA_PLANS_RESPONSE_INVALID") return t("projectIdeas.plansInvalid");
 	if (error === "PROJECT_IDEA_PLANS_TIMEOUT" || error === "PROJECT_IDEA_PLANS_RUNTIME_TIMEOUT") return t("projectIdeas.plansTimeout");
@@ -161,7 +162,8 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 	const selected = ideas.find((idea) => idea.id === selectedId) ?? null;
 	const selectedHasLinkedSession = Boolean(selected && hasLiveLatestLinkedSession(selected.linkedSessionIds, availableSessionIds));
 	const latestLinkedSessionId = selected?.linkedSessionIds.at(-1);
-	const selectedCanExtractPlans = selected?.kind === "brainstorm" && Boolean(latestLinkedSessionId);
+	const selectedCanExtractPlans = selected?.kind === "brainstorm"
+		&& hasLiveLatestLinkedSession(selected.linkedSessionIds, availableSessionIds);
 	const executionInFlight = executingIdeaId !== null;
 	const refinementTargetKey = `${projectId ?? ""}:${selectedId ?? "new"}:${draft.kind}:${draft.title}:${draft.body}`;
 	const draftRef = useRef(draft);
@@ -488,7 +490,7 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 	}, [draft, executionInFlight, load, onExecute, projectId, refinementDraft, refinementTargetKey, setIdeasByProject]);
 
 	const extractPlans = useCallback(async () => {
-		if (!projectId || !selected || selected.kind !== "brainstorm" || !latestLinkedSessionId || plans.running || startingPlansSource) return;
+		if (!projectId || !selected || selected.kind !== "brainstorm" || !latestLinkedSessionId || !hasLiveLatestLinkedSession(selected.linkedSessionIds, availableSessionIds) || plans.running || startingPlansSource) return;
 		const sourceIdeaId = selected.id;
 		setStartingPlansSource(true);
 		try {
@@ -511,9 +513,16 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 		} finally {
 			setStartingPlansSource(false);
 		}
-	}, [latestLinkedSessionId, plans, projectId, refinementModel, refinementThinkingLevel, selected, startingPlansSource]);
-
+	}, [availableSessionIds, latestLinkedSessionId, plans, projectId, refinementModel, refinementThinkingLevel, selected, startingPlansSource]);
 	const remove = useCallback(async (idea: ProjectIdea) => {
+		if (idea.id === selectedIdRef.current) {
+			// Deleting the selected idea must invalidate any source wait or anonymous
+			// summary runtime before the idea disappears from the local tree.
+			refinement.cancel();
+			plans.cancel();
+			setRefinementDraft(undefined);
+			setRefinementOpen(false);
+		}
 		try {
 			// Keep descendants untouched: the hierarchy builder treats a missing parent as
 			// a root, so deleting an idea cannot erase or rewrite its follow-ups.
@@ -526,7 +535,7 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 		} catch (reason) {
 			showNotice(projectIdeaError(reason), 5000, "error");
 		}
-	}, [projectId, setIdeasByProject]);
+	}, [plans.cancel, projectId, refinement.cancel, setIdeasByProject]);
 
 	useEffect(() => {
 		if (!open) {

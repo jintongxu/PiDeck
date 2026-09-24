@@ -294,7 +294,14 @@ function readSessionId(ctx: ExtensionContext): string | undefined {
 
 function hasSessionName(pi: ExtensionAPI): boolean {
 	try {
-		return Boolean(pi.getSessionName()?.trim());
+		const name = pi.getSessionName()?.trim() ?? "";
+		if (!name) return false;
+		// PiDeck creates a visible `<project> agent` placeholder before the first
+		// prompt. It is not a user rename and must not suppress AI naming; only the
+		// exact generic names or the known trailing placeholder suffix are ignored.
+		if (/^(?:agent|assistant|新会话|新对话)$/i.test(name)) return false;
+		if (/(?:^|\s)(?:agent|assistant)$/i.test(name)) return false;
+		return true;
 	} catch {
 		return false;
 	}

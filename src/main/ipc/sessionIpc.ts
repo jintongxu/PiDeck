@@ -50,6 +50,10 @@ function isDshModelDiscoveryInput(input: unknown): input is DshModelDiscoveryInp
 function isRecord(input: unknown): input is Record<string, unknown> {
 	return typeof input === "object" && input !== null && !Array.isArray(input);
 }
+
+function isEnoentError(input: unknown): boolean {
+	return isRecord(input) && input.code === "ENOENT";
+}
 /**
  * 已扫描过项目的集合（模块级）：决定 catalogList 走「首次同步扫描」还是
  * 「缓存先回显 + 后台扫描推送」。进程生命周期内单调增长，无需清理。
@@ -698,6 +702,7 @@ export function registerSessionIpc(deps: SessionIpcDeps): void {
 	ipcMain.handle(
 		ipcChannels.sessionsCreateAnonymous,
 		async (_event, input: CreateAnonymousSessionInput) => {
+			if (input.noTools !== undefined && typeof input.noTools !== "boolean") throw new Error("INVALID_ANONYMOUS_SESSION");
 			// 与 createDraft 同一 DSH runtime 门控：匿名会话同样不能落在不可用后端上。
 			if (input.backend === "dsh" && canCreateDshSession?.() !== true) {
 				if (getDshRuntimeStatus?.().state === "outdated") {
@@ -897,14 +902,30 @@ export function registerSessionIpc(deps: SessionIpcDeps): void {
 				// imagegen 后端会话：历史独立存 ImageSessionStore，不走 pi 文件
 				return (await readImageSessionMessages?.(sessionId)) ?? [];
 			}
-			if (!entry?.filePath) return [];
-			// 有界「加载窗口」（9 轮 + 条目预算），不是全量历史：整量读出在大会话上
-			// 会同时顶爆主进程与渲染层（#213）；需要更早历史走 readRecordMessagePage。
-			const window = await agentManager.readSessionLoadWindow(entry.filePath, sessionId);
-			const messages = window.messages;
-			const metadata = await agentManager.readSessionDisplayMetadata(entry.filePath);
-			await backfillHistoricalSessionMetadata(sessionId, metadata);
-			return messages;
+			if (!entry?.filePath) {
+				const target = sessionRuntimeCoordinator.getTarget(sessionId);
+				return target ? agentManager.getMessages(target.agentId) : [];
+			}
+			// 活跃会话的 catalog filePath 可能尚未回填或指向旧路径（尤其是刚创建的
+			// 头脑风暴/方案整理会话）。活动 runtime 内存是最新来源，优先使用其中
+			// 已有助手回复，避免渲染缓存/磁盘窗口落后导致误判“没有完成回复”。
+			const liveTarget = sessionRuntimeCoordinator.getTarget(sessionId);
+			const liveMessages = liveTarget ? agentManager.getMessages(liveTarget.agentId) : [];
+			if (liveMessages.some((message) => message.role === "assistant" && message.text.trim())) {
+				return liveMessages;
+			}
+			try {
+				// 有界「加载窗口」（9 轮 + 条目预算），不是全量历史：整量读出在大会话上
+				// 会同时顶爆主进程与渲染层（#213）；需要更早历史走 readRecordMessagePage。
+				const window = await agentManager.readSessionLoadWindow(entry.filePath, sessionId);
+				const messages = window.messages;
+				const metadata = await agentManager.readSessionDisplayMetadata(entry.filePath);
+				await backfillHistoricalSessionMetadata(sessionId, metadata);
+				return messages;
+			} catch (error) {
+				if (isEnoentError(error) && liveTarget) return liveMessages;
+				throw error;
+			}
 		},
 	);
 		/** 子代理列表：从会话文件 subagents:record + catalog 子会话回填合成。 */

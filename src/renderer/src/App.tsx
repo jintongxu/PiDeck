@@ -4532,6 +4532,23 @@ export function App() {
       currentSessionProjectId={currentSession?.projectId}
       currentSessionContext={activeMessages}
       availableSessionIds={Object.keys(sessionRecordIds)}
+      onBrainstorm={async (projectId, prompt, model, thinkingLevel) => {
+        // 头脑风暴必须从专用讨论提示词启动，不能退化成普通实现会话；模型与
+        // 思考档位沿用项目想法全局配置，但不强制覆盖用户的自动标题开关。
+        const targetSession = await createSessionDraftWithTab(projectId, {
+          ...(model ? { model } : {}),
+          ...(thinkingLevel ? { thinkingLevel } : {}),
+        });
+        if (!targetSession) return null;
+        if (!store.get(sessionRuntimeBySessionIdAtomFamily(targetSession.id))?.agentId) {
+          await api.sessions.activateRuntime(targetSession.id);
+        }
+        const delivered = await submitPromptSnapshot(targetSession.id, prompt);
+        return delivered === true ? targetSession.id : null;
+      }}
+      onPlansStarted={(projectId, sessionId) => {
+        void openSidebarSessionByIdWithTab(projectId, sessionId, "permanent");
+      }}
       onContinue={(projectId, prompt) => {
         void createSessionDraftWithTab(projectId)
           .then((session) => {

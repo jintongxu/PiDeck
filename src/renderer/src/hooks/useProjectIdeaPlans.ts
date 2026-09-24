@@ -32,7 +32,17 @@ function isCompletedAssistantMessage(message: { role: string; text: string; stop
 		message.stopReason !== "aborted" &&
 		message.stopReason !== "error" &&
 		message.stopReason !== "pending" &&
-		message.stopReason !== "toolUse";
+		message.stopReason !== "toolUse" &&
+		message.stopReason !== "length";
+}
+
+function isSummaryAssistantTerminal(message: { role: string; text: string; stopReason?: string }): boolean {
+	return message.role === "assistant" &&
+		message.stopReason !== "aborted" &&
+		message.stopReason !== "error" &&
+		message.stopReason !== "pending" &&
+		message.stopReason !== "toolUse" &&
+		(Boolean(message.text.trim()) || message.stopReason === "stop" || message.stopReason === "length");
 }
 
 function hasCompletedAssistantTurn(messages: readonly { role: string; text: string; stopReason?: string }[]): boolean {
@@ -99,15 +109,19 @@ function waitForSessionCondition<T>(
 			store.get(runtimeAtom),
 		));
 		const checkRuntimeEvent = (event: SessionRuntimeEvent) => {
-			if (event.sessionId !== sessionId || !event.payload || typeof event.payload !== "object") return;
-			const payload = event.payload as { messages?: unknown; status?: unknown };
-			if (Array.isArray(payload.messages)) {
-				finishResult(predicate(payload.messages as ChatMessage[], store.get(runtimeAtom)));
+			if (event.sessionId !== sessionId) return;
+			const runtime = store.get(runtimeAtom);
+			if (runtime && runtime.runtimeGeneration !== event.runtimeGeneration) return;
+			if (event.kind === "detach") {
+				finishResult(predicate(store.get(messagesAtom)?.messages ?? [], { status: "detached" }));
 				return;
 			}
-			if (typeof payload.status === "string") {
-				finishResult(predicate(store.get(messagesAtom)?.messages ?? [], { status: payload.status }));
-			}
+			if (!event.payload || typeof event.payload !== "object") return;
+			const payload = event.payload as { status?: unknown };
+			if (typeof payload.status !== "string") return;
+			const terminal = payload.status === "error" || payload.status === "closed" || payload.status === "detached";
+			if (runtime && runtime.agentId !== event.agentId && !terminal) return;
+			finishResult(predicate(store.get(messagesAtom)?.messages ?? [], { status: payload.status }));
 		};
 		const cancel = () => finish(() => reject(new Error("PROJECT_IDEA_PLANS_CANCELLED")));
 
@@ -149,6 +163,7 @@ export function useProjectIdeaPlans() {
 	}, [removeSessionState, store]);
 
 	const finishSummary = useCallback((request: SummaryRequest, text: string) => {
+		if (!mountedRef.current || requestStateRef.current?.requestId !== request.requestId) return;
 		requestStateRef.current = null;
 		try {
 			const parsed = parseProjectIdeaRefinement(text);
@@ -177,6 +192,12 @@ export function useProjectIdeaPlans() {
 	}): Promise<boolean> => {
 		const requestId = requestRef.current + 1;
 		requestRef.current = requestId;
+		pendingWaitCancelRef.current?.();
+		pendingWaitCancelRef.current = null;
+		requestStateRef.current = null;
+		const previousSummarySessionId = activeSummarySessionIdRef.current;
+		if (previousSummarySessionId) void cleanupSummarySession(previousSummarySessionId);
+		activeSummarySessionIdRef.current = null;
 		setError(null);
 		setSummary(null);
 		setRunning(true);
@@ -185,6 +206,7 @@ export function useProjectIdeaPlans() {
 			// First consult persisted history; only then subscribe to live events. This avoids
 			// waiting forever when the final assistant snapshot arrived before the click.
 			let messages = [...(store.get(sessionMessageCacheBySessionIdAtomFamily(input.sourceSessionId))?.messages ?? [])];
+			let sourceReadFailed = false;
 			try {
 				const diskMessages = await desktopApi.sessions.readRecordMessages(input.sourceSessionId);
 				const cachedLast = messages.at(-1)?.timestamp ?? 0;
@@ -194,18 +216,25 @@ export function useProjectIdeaPlans() {
 				}
 			} catch {
 				// Anonymous/source runtimes have no JSONL; the live cache remains authoritative.
+				sourceReadFailed = true;
 			}
-			// Wait for a completed assistant turn, never just the optimistic user message.
+			if (requestRef.current !== requestId || !mountedRef.current) return false;
+			if (sourceReadFailed && messages.length === 0 && !store.get(sessionRuntimeBySessionIdAtomFamily(input.sourceSessionId))) {
+				throw new Error("PROJECT_IDEA_PLANS_SOURCE_SESSION_UNAVAILABLE");
+			}
+			// 归纳只消费已完成讨论；若来源仍在生成或等待 Ask 回答，立即反馈而不是
+			// 静默订阅并无限等待。用户完成当前回合后可再次点击归纳。
 			if (!hasCompletedAssistantTurn(messages)) {
-				messages = [...await waitForSessionCondition(store, input.sourceSessionId, (currentMessages, runtime) => {
-					if (hasCompletedAssistantTurn(currentMessages)) return { kind: "ready", value: currentMessages };
-					if (runtime?.status === "error" || runtime?.status === "closed") {
-						return { kind: "error", error: "PROJECT_IDEA_PLANS_SOURCE_SESSION_UNAVAILABLE" };
-					}
-					return undefined;
-				}, pendingWaitCancelRef)];
+				const sourceRuntime = store.get(sessionRuntimeBySessionIdAtomFamily(input.sourceSessionId));
+				if (sourceRuntime?.status === "starting" || sourceRuntime?.status === "running") {
+					throw new Error("PROJECT_IDEA_PLANS_SOURCE_SESSION_BUSY");
+				}
+				if (sourceRuntime?.status === "error" || sourceRuntime?.status === "closed" || sourceRuntime?.status === "detached") {
+					throw new Error("PROJECT_IDEA_PLANS_SOURCE_SESSION_UNAVAILABLE");
+				}
+				throw new Error("PROJECT_IDEA_PLANS_SOURCE_SESSION_EMPTY");
 			}
-			if (!hasCompletedAssistantTurn(messages)) throw new Error("PROJECT_IDEA_PLANS_SOURCE_SESSION_EMPTY");
+			if (requestRef.current !== requestId || !mountedRef.current) return false;
 			const transcript = messages
 				.filter((message) => message.role === "user" || message.role === "assistant")
 				.map((message) => `${message.role}: ${message.text}`)
@@ -221,6 +250,10 @@ export function useProjectIdeaPlans() {
 				...(input.thinkingLevel ? { thinkingLevel: input.thinkingLevel } : {}),
 			});
 			createdSummarySessionId = summarySession.id;
+			if (requestRef.current !== requestId || !mountedRef.current) {
+				await cleanupSummarySession(summarySession.id);
+				return false;
+			}
 			activeSummarySessionIdRef.current = summarySession.id;
 			const baselineAssistantIds = new Set((store.get(sessionMessageCacheBySessionIdAtomFamily(summarySession.id))?.messages ?? [])
 				.filter((message) => message.role === "assistant")
@@ -240,21 +273,38 @@ export function useProjectIdeaPlans() {
 				message: buildProjectIdeaBrainstormSummaryPrompt(input.title, input.body, transcript),
 			});
 			if (!response.accepted) throw new Error(response.error);
+			if (requestRef.current !== requestId || !mountedRef.current || requestStateRef.current?.requestId !== requestId) {
+				await cleanupSummarySession(summarySession.id);
+				return false;
+			}
 
+			let summaryTurnStarted = store.get(sessionRuntimeBySessionIdAtomFamily(summarySession.id))?.status === "running";
 			const result = await waitForSessionCondition(store, summarySession.id, (currentMessages, runtime) => {
-				const assistantText = [...currentMessages]
+				// A length-limited response is still terminal. Feed its text into the strict
+				// JSON parser so complete JSON succeeds and truncated JSON reports invalid,
+				// instead of waiting forever after the runtime has already settled.
+				const assistantMessage = [...currentMessages]
 					.reverse()
-					.find((message) => isCompletedAssistantMessage(message) && !baselineAssistantIds.has(message.id))?.text;
-				if (assistantText) return { kind: "ready", value: assistantText };
-				if (runtime?.status === "error" || runtime?.status === "closed") {
+					.find((message) => isSummaryAssistantTerminal(message) && !baselineAssistantIds.has(message.id));
+				if (assistantMessage?.text.trim()) return { kind: "ready", value: assistantMessage.text };
+				if (assistantMessage) return { kind: "error", error: "PROJECT_IDEA_PLANS_RESPONSE_INVALID" };
+				if (runtime?.status === "running") summaryTurnStarted = true;
+				if (summaryTurnStarted && runtime?.status === "idle") {
+					return { kind: "error", error: "PROJECT_IDEA_PLANS_RESPONSE_INVALID" };
+				}
+				if (runtime?.status === "error" || runtime?.status === "closed" || runtime?.status === "detached") {
 					return { kind: "error", error: "PROJECT_IDEA_PLANS_RUNTIME_TERMINATED" };
 				}
 				return undefined;
 			}, pendingWaitCancelRef);
+			if (requestRef.current !== requestId || !mountedRef.current) {
+				await cleanupSummarySession(summarySession.id);
+				return false;
+			}
 			finishSummary(request, result);
 			return true;
 		} catch (reason) {
-			requestStateRef.current = null;
+			if (requestStateRef.current?.requestId === requestId) requestStateRef.current = null;
 			if (createdSummarySessionId) await cleanupSummarySession(createdSummarySessionId);
 			if (requestRef.current === requestId && mountedRef.current && !isCancelledError(reason)) {
 				setRunning(false);

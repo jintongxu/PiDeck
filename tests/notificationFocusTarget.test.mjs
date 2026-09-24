@@ -65,6 +65,7 @@ test("AgentManager notification target uses record id resolver", () => {
     "utf8",
   );
   assert.match(source, /resolveNotificationSessionId\(\s*resolveSessionId \? \(\) => resolveSessionId\(agentId\) : undefined,/);
+  assert.match(source, /lastMessage\?\.role === "assistant" && !isAbortSettled && !runtime\.tab\.noSession/);
 });
 
 // 冷启动时序：加载期目标必须进 pending 队列，且 renderer 挂载后主动拉取

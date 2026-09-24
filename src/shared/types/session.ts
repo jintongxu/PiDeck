@@ -245,6 +245,8 @@ export type CreateAnonymousSessionInput = {
 	title?: string;
 	/** 运行时后端；缺省 "pi"。 */
 	backend?: import("./agent").AgentBackend;
+	/** Formatting-only disposable sessions disable Pi tools before the first turn. */
+	noTools?: boolean;
 } & SessionLaunchPreferences;
 
 export type CreateAnonymousSessionResult = {

@@ -100,4 +100,6 @@ test("brainstorm ideas produce discussion-only structured prompts", () => {
   assert.match(discussion, /只讨论、不改代码/);
   assert.match(discussion, /候选方案/);
   assert.match(discussion, /不要擅自选定方案/);
+  assert.match(discussion, /当前工作目录是否为空、是否存在代码都不影响讨论/);
+  assert.match(discussion, /不要因此索要项目路径或尝试创建示例项目/);
 });

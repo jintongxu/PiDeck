@@ -82,6 +82,7 @@ export const zhCN = {
   "projectIdeas.plansEmpty": "当前讨论还不足以形成候选方案。请回到会话继续交流，再重新整理。",
   "projectIdeas.plansInvalid": "整理回复不是有效的候选方案格式。请继续交流后再试一次。",
   "projectIdeas.plansSourceEmpty": "头脑风暴会话还没有完成的回复，请继续交流后再试一次。",
+  "projectIdeas.plansSourceBusy": "头脑风暴会话仍在回复或等待工具提问，请先完成当前回合，再重新点击归纳。",
   "projectIdeas.plansSourceUnavailable": "头脑风暴会话暂时不可用，请重新打开会话后再试。",
   "projectIdeas.plansTimeout": "方案整理超时，请回到会话继续交流后再试。",
   "projectIdeas.brainstormSummaryTitle": "归纳为项目想法",

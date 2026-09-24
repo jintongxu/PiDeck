@@ -728,6 +728,7 @@ export class AgentManager {
 			deckSessionId?: string;
 			trustOverride?: "approve" | "no-approve";
 			noSession?: boolean;
+			noTools?: boolean;
 			onExit: (payload: { code: number | null; signal: string | null }) => void;
 		},
 	): Promise<{
@@ -807,6 +808,7 @@ export class AgentManager {
 			deckSessionId?: string;
 			trustOverride?: "approve" | "no-approve";
 			noSession?: boolean;
+			noTools?: boolean;
 			onExit: (payload: { code: number | null; signal: string | null }) => void;
 		},
 		settingsOverride?: Partial<Pick<AppSettings, "piRpcNoExtensions">>,
@@ -847,7 +849,7 @@ export class AgentManager {
 			projectPath: options.projectPath,
 			onExit: options.onExit,
 		});
-		const client = await process.start(options.sessionPath, options.trustOverride, options.noSession);
+		const client = await process.start(options.sessionPath, options.trustOverride, options.noSession, options.noTools);
 		void this.appLogger?.info("agent", "Agent get_state request start", {
 			agentId,
 			timeoutMs: this.startupHandshakeTimeoutMs,
@@ -1684,7 +1686,15 @@ export class AgentManager {
 		// 每次 spawn 前异步刷新模型列表缓存（不等完成，避免阻塞 Agent 启动）：
 		// 用户直接编辑 models.json/auth.json 后，下一次启动的 Agent 即能看到新模型。
 		this.onBeforeAgentSpawn?.();
-		this.agents.set(id, { tab, process: this.createPiProcess(project.path, input.sessionPath, input.deckSessionId) });
+		this.agents.set(id, {
+			tab,
+			process: this.createPiProcess(
+				project.path,
+				input.sessionPath,
+				input.deckSessionId,
+				input.noTools ? { piRpcNoExtensions: true, piRpcNoSkills: true } : undefined,
+			),
+		});
 		this.messages.set(id, []);
 		this.emitState();
 
@@ -1696,6 +1706,7 @@ export class AgentManager {
 				deckSessionId: input.deckSessionId,
 				trustOverride,
 				noSession: input.noSession,
+				noTools: input.noTools,
 				onExit: (payload) => this.handleCreateProcessExit(id, tab, payload),
 			});
 		} catch (error) {
@@ -5292,7 +5303,7 @@ export class AgentManager {
 				const lastMessage = messages[messages.length - 1];
 				// 手动停止（abort）不算正常完成：与下方 notifyAgentSettled 同一判断，
 				// 停止会话后不弹「已完成」系统通知（用户主动中止，无需提醒）
-				if (lastMessage?.role === "assistant" && !isAbortSettled) {
+				if (lastMessage?.role === "assistant" && !isAbortSettled && !runtime.tab.noSession) {
 					this.notifySessionEnd(agentId, runtime.tab.title);
 				}
 				// 成功空闲（settled）后才算完成：通知宠物等内部模块携带标题，供「{title} 已完成」气泡使用。

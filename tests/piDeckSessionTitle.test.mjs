@@ -167,6 +167,15 @@ function freshBranch({ user = "请修复登录页面", assistant = "我会先检
 	];
 }
 
+test("PiDeck placeholder title does not suppress first AI session title", async () => {
+  const entries = freshBranch({ user: "请整理头脑风暴", assistant: "我会先澄清方向" });
+  const harness = createHarness({ entries, titleName: "demo agent" });
+  await startFresh(harness, entries);
+  await harness.emit("agent_settled");
+  await flushAsyncWork();
+  assert.deepEqual(harness.setNames, ["修复登录流程"]);
+});
+
 test("首轮 settled 后只用最小独立 context 生成标题并写回 session_info", async () => {
 	const entries = freshBranch({ user: "请修复登录页面 api_key=super-secret-value" });
 	const harness = createHarness({ entries });

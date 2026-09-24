@@ -243,6 +243,8 @@ export type CreateAgentInput = {
 	wslUser?: string;
 	importedSourceId?: string;
 	noSession?: boolean;
+	/** Start a disposable formatting runtime without Pi tools. */
+	noTools?: boolean;
 };
 
 export type AgentUiResponse = {

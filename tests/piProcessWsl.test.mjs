@@ -160,6 +160,22 @@ test("starts WSL pi with Linux cwd/session while keeping a Windows-accessible sp
 	assert.equal(process.getDiagnostics().cwd, "/root/ba_cli");
 });
 
+test("disables Pi tools for disposable formatting runtimes", async () => {
+	const spawnCalls = [];
+	const invocationCalls = [];
+	const { PiProcess } = loadPiProcess(spawnCalls);
+	const process = new PiProcess(
+		"//wsl.localhost/Ubuntu-24.04/root/ba_cli",
+		settings,
+		createLocator(invocationCalls),
+	);
+
+	await process.start(undefined, undefined, true, true);
+
+	assert.ok(invocationCalls[0].args.includes("--no-session"));
+	assert.ok(invocationCalls[0].args.includes("--no-tools"));
+});
+
 test("rejects a project UNC from another distro before spawning pi", async () => {
 	const spawnCalls = [];
 	const { PiProcess } = loadPiProcess(spawnCalls);
