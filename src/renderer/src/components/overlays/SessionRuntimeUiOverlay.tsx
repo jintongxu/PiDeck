@@ -94,8 +94,11 @@ function batchAnswerLabel(value: BatchAnswer): string {
 	return value ?? "";
 }
 
-/** 是否已作答：multi_select 空数组视为未作答 */
-function isBatchAnswered(value: BatchAnswer): boolean {
+/** 是否已作答：可选题允许明确提交空字符串/空数组，必填题仍需有效答案。 */
+function isBatchAnswered(question: AgentUiBatchQuestion, value: BatchAnswer): boolean {
+	// Optional fields may be left untouched; they are serialized as an empty value
+	// when the whole form is submitted.
+	if (question.required === false) return true;
 	return value !== undefined && (!Array.isArray(value) || value.length > 0);
 }
 
@@ -138,7 +141,7 @@ function BatchAskInlineBar(props: {
 		setExpanded(true);
 	}, [requestKey]);
 
-	const answeredCount = questions.filter((question) => isBatchAnswered(answers[question.id])).length;
+	const answeredCount = questions.filter((question) => isBatchAnswered(question, answers[question.id])).length;
 	const allAnswered = total > 0 && answeredCount === total;
 	const reviewTab = props.request.batchReview === true && currentTab === total;
 	const currentQuestion = reviewTab ? undefined : questions[currentTab];
@@ -168,8 +171,8 @@ function BatchAskInlineBar(props: {
 	}
 
 	function submitText(question: AgentUiBatchQuestion) {
-		const value = inputValues[question.id]?.trim();
-		if (value) setAnswer(question.id, value, value, question.type === "select");
+		const value = inputValues[question.id]?.trim() ?? "";
+		if (value || question.required !== false) setAnswer(question.id, value, value, question.type === "select");
 	}
 
 	function submitAnswers() {
@@ -215,7 +218,7 @@ function BatchAskInlineBar(props: {
 
 			<div className="mb-1 flex min-w-0 gap-1 overflow-x-auto border-b border-border-subtle pb-1" role="tablist">
 				{questions.map((question, index) => {
-					const answered = isBatchAnswered(answers[question.id]);
+					const answered = isBatchAnswered(question, answers[question.id]);
 					const active = index === currentTab;
 					return (
 						<Button
@@ -261,7 +264,7 @@ function BatchAskInlineBar(props: {
 						<div className="flex flex-col gap-1 rounded-sm bg-bg-muted p-2">
 							{questions.map((question, index) => {
 								const value = answers[question.id];
-								const answered = isBatchAnswered(value);
+								const answered = isBatchAnswered(question, value);
 								return (
 									<div key={question.id} className="grid grid-cols-[20px_minmax(0,1fr)_minmax(0,30ch)] items-start gap-2 text-caption leading-[1.6] text-text-primary">
 										<span className="font-mono font-semibold">{index + 1}</span>
@@ -353,7 +356,7 @@ function BatchQuestion(props: {
 					fromField: target.tagName === "INPUT" || target.tagName === "TEXTAREA",
 					fromButton: target.tagName === "BUTTON",
 					fromOptionButton: target.classList.contains("ask-inline-bar-option"),
-					answered: isBatchAnswered(props.answer),
+					answered: isBatchAnswered(props.question, props.answer),
 					nextDisabled: props.nextDisabled,
 				});
 				if (action.kind === "advance") {
@@ -447,7 +450,7 @@ function BatchQuestion(props: {
 								/>
 								<Button
 																		variant="default"
-									disabled={props.responding || !props.inputValue.trim()}
+									disabled={props.responding || (question.required !== false && !props.inputValue.trim())}
 									onClick={props.onSubmitInput}
 								>
 									{t("ask.submit")}
@@ -499,8 +502,12 @@ function BatchQuestion(props: {
 						placeholder={question.placeholder || t("ask.editorPlaceholder")}
 						disabled={props.responding}
 						onChange={(event) => {
-							props.onInputChange(event.target.value);
-							props.onAnswer(event.target.value || undefined, event.target.value);
+							const nextValue = event.target.value;
+							props.onInputChange(nextValue);
+							props.onAnswer(
+								nextValue.trim() || props.question.required === false ? nextValue : undefined,
+								nextValue,
+							);
 						}}
 						onKeyDown={(event) => {
 							// 多行编辑器：回车保留换行，Ctrl/Cmd+Enter 提交并进入下一题（末题 = 提交全部）
@@ -536,7 +543,7 @@ function BatchQuestion(props: {
 						<Button
 							className="shrink-0"
 							variant="default"
-							disabled={props.responding || !props.inputValue.trim()}
+							disabled={props.responding || (question.required !== false && !props.inputValue.trim())}
 							onClick={props.onSubmitInput}
 						>
 							{t("ask.submit")}
@@ -636,10 +643,10 @@ export function SessionRuntimeUiOverlay({ sessionId, runtime, ui, responder, onE
 							disabled={responding}
 							onChange={(event) => setValue(event.target.value)}
 							onKeyDown={(event) => {
-								if (event.key === "Enter" && !isComposingKeyboardEvent(event) && value.trim()) submitValue(value.trim());
+								if (event.key === "Enter" && !isComposingKeyboardEvent(event) && (value.trim() || request.required !== false)) submitValue(value.trim());
 							}}
 						/>
-						<Button variant="default" disabled={responding || !value.trim()} onClick={() => submitValue(value.trim())}>
+						<Button variant="default" disabled={responding || (request.required !== false && !value.trim())} onClick={() => submitValue(value.trim())}>
 							{t("ask.submit")}
 						</Button>
 					</div>
@@ -792,14 +799,14 @@ export function SessionRuntimeUiOverlay({ sessionId, runtime, ui, responder, onE
 									onChange={(event) => setValue(event.target.value)}
 									onKeyDown={(event) => {
 										// IME 合成中的回车只用于选字/提交候选，不能当作提交键
-										if (event.key === "Enter" && !isComposingKeyboardEvent(event) && value.trim()) {
+										if (event.key === "Enter" && !isComposingKeyboardEvent(event) && (value.trim() || request.required !== false)) {
 											submitValue(value.trim());
 										}
 									}}
 								/>
 								<Button
 																		variant="default"
-									disabled={responding || !value.trim()}
+									disabled={responding || (request.required !== false && !value.trim())}
 									onClick={() => submitValue(value.trim())}
 								>
 									{t("ask.submit")}
@@ -840,12 +847,12 @@ export function SessionRuntimeUiOverlay({ sessionId, runtime, ui, responder, onE
 							onChange={(event) => setValue(event.target.value)}
 							onKeyDown={(event) => {
 								// IME 合成中的回车只用于选字/提交候选，不能当作提交键
-								if (event.key === "Enter" && !isComposingKeyboardEvent(event) && value.trim()) {
+								if (event.key === "Enter" && !isComposingKeyboardEvent(event) && (value.trim() || request.required !== false)) {
 									submitValue(value.trim());
 								}
 							}}
 						/>
-						<Button className="ask-inline-bar-submit-btn" variant="default" disabled={responding || !value.trim()} onClick={() => submitValue(value.trim())}>
+						<Button className="ask-inline-bar-submit-btn" variant="default" disabled={responding || (request.required !== false && !value.trim())} onClick={() => submitValue(value.trim())}>
 							{t("ask.submit")}
 						</Button>
 					</div>
@@ -866,14 +873,14 @@ export function SessionRuntimeUiOverlay({ sessionId, runtime, ui, responder, onE
 									(event.ctrlKey || event.metaKey) &&
 									!event.shiftKey &&
 									!isComposingKeyboardEvent(event) &&
-									value.trim()
+									(value.trim() || request.required !== false)
 								) {
 									event.preventDefault();
 									submitValue(value);
 								}
 							}}
 						/>
-						<Button className="ask-inline-bar-submit-btn" variant="default" disabled={responding || !value.trim()} onClick={() => submitValue(value)}>
+						<Button className="ask-inline-bar-submit-btn" variant="default" disabled={responding || (request.required !== false && !value.trim())} onClick={() => submitValue(value)}>
 							{t("ask.submit")}
 						</Button>
 					</div>

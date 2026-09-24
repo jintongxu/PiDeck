@@ -184,6 +184,18 @@ test("serializeBatchAnswers: 混合题型序列化并保留 label/wasCustom", ()
 	assert.equal(batchAnswerLabel(true), "true");
 	assert.equal(batchAnswerLabel("x"), "x");
 	assert.equal(batchAnswerLabel(undefined), "");
+
+	const optional = JSON.parse(serializeBatchAnswers(
+		[{ id: "optional", type: "input", required: false }],
+		{ optional: "" },
+	));
+	assert.deepEqual(optional.answers[0], {
+		id: "optional",
+		type: "input",
+		value: "",
+		label: "",
+		wasCustom: false,
+	});
 });
 
 test("serializeBatchAnswers: multi_select 数组 value 序列化与 label 拼接", () => {

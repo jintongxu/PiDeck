@@ -218,12 +218,13 @@ export function formatAskTitle(title: string): string {
  * meta 提供每个问题的展示 label 与自定义标记（可选）。
  */
 export function serializeBatchAnswers(
-	questions: ReadonlyArray<{ id: string; type: string }>,
+	questions: ReadonlyArray<{ id: string; type: string; required?: boolean }>,
 	answers: Readonly<Record<string, BatchAnswerValue>>,
 	meta?: Readonly<Record<string, { label?: string; wasCustom?: boolean }>>,
 ): string {
 	const result = questions.map((question) => {
-		const value = answers[question.id] ?? null;
+		const emptyValue = question.type === "multi_select" ? [] : "";
+		const value = answers[question.id] ?? (question.required === false ? emptyValue : null);
 		const itemMeta = meta?.[question.id];
 		return {
 			id: question.id,

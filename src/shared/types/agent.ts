@@ -260,6 +260,8 @@ export type AgentUiBatchQuestion = {
 	id: string;
 	type: "select" | "multi_select" | "confirm" | "input" | "editor";
 	question: string;
+	/** Text questions are required by default; false allows an explicit blank answer. */
+	required?: boolean;
 	options?: Array<string | { label: string; value?: string; description?: string }>;
 	allowOther?: boolean;
 	placeholder?: string;
@@ -279,6 +281,8 @@ export type AgentUiRequest = {
 	options?: string[];
 	placeholder?: string;
 	prefill?: string;
+	/** Text questions are required by default; false allows an explicit blank answer. */
+	required?: boolean;
 	allowOther?: boolean;
 	completed?: boolean;
 	value?: string | boolean;

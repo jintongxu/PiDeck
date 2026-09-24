@@ -184,6 +184,12 @@ export function buildDshRespondValue(
 				}
 				return { id: item.id as string, selected: [value] };
 			}
+			if (Array.isArray(value)) {
+				return {
+					id: item.id as string,
+					selected: value.filter((entry): entry is string => typeof entry === "string"),
+				};
+			}
 			// 布尔（confirm 型）：label 是 "true"/"false"
 			if (typeof value === "boolean") {
 				return { id: item.id as string, selected: [value ? "true" : "false"] };

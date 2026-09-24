@@ -110,8 +110,9 @@ export function parseAskInputValue(raw: unknown): string | undefined {
 	if (!action || typeof action !== "object" || typeof action.input_value !== "string") {
 		return undefined;
 	}
-	const value = action.input_value.trim();
-	return value || undefined;
+	// distinguish a missing input_value (not an input submission) from an
+	// intentionally blank optional answer; the bridge uses undefined as the sentinel.
+	return action.input_value.trim();
 }
 
 /** 构建飞书提问卡片：select 给选项按钮、confirm 给确认/取消、input/editor 给卡片输入框。 */

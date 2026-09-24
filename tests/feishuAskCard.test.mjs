@@ -142,8 +142,10 @@ test("batch card renders numbered questions and cancel-only actions", () => {
 test("parseAskInputValue extracts input_value from the raw card callback", () => {
 	const { parseAskInputValue } = loadAskCardModule();
 	assert.equal(parseAskInputValue({ action: { input_value: "  我的回答  " } }), "我的回答");
-	assert.equal(parseAskInputValue({ action: { input_value: "" } }), undefined);
-	assert.equal(parseAskInputValue({ action: { input_value: "   " } }), undefined);
+	// Empty input_value is a valid optional answer; only a missing field means
+	// that this callback was not an input submission.
+	assert.equal(parseAskInputValue({ action: { input_value: "" } }), "");
+	assert.equal(parseAskInputValue({ action: { input_value: "   " } }), "");
 	assert.equal(parseAskInputValue({ action: {} }), undefined);
 	assert.equal(parseAskInputValue({}), undefined);
 	assert.equal(parseAskInputValue(null), undefined);

@@ -176,6 +176,7 @@ export type PendingUiRequestSnapshot = {
 	options?: string[];
 	placeholder?: string;
 	prefill?: string;
+	required?: boolean;
 	allowOther?: boolean;
 	batchQuestions?: AgentUiBatchQuestion[];
 	batchReview?: boolean;
@@ -1049,6 +1050,7 @@ export class SessionRuntimeCoordinator {
 			options,
 			placeholder: typeof event.payload.placeholder === "string" ? event.payload.placeholder : undefined,
 			prefill: typeof event.payload.prefill === "string" ? event.payload.prefill : undefined,
+			required: typeof event.payload.required === "boolean" ? event.payload.required : undefined,
 			allowOther: event.payload.allowOther === true,
 			batchQuestions,
 			batchReview,

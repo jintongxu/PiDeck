@@ -47,6 +47,8 @@ interface NormalizedQuestion {
 	id: string;
 	type: "select" | "multi_select" | "confirm" | "input" | "editor";
 	question: string;
+	/** Text fields are required by default; false explicitly permits a blank answer. */
+	required: boolean;
 	options?: NormalizedOption[];
 	allowOther?: boolean;
 	placeholder?: string;
@@ -95,6 +97,9 @@ const OptionSchema = Type.Union([
 
 const QuestionSchema = Type.Object({
 	id: Type.String({ description: "Unique identifier for this question" }),
+	required: Type.Optional(
+		Type.Boolean({ description: "Whether an answer is required; defaults to true. Set false to allow leaving this question blank." }),
+	),
 	type: Type.Optional(
 		StringEnum(["select", "multi_select", "confirm", "input", "editor"], {
 			description:
@@ -133,6 +138,9 @@ const AskQuestionParams = Type.Object({
 	),
 	question: Type.Optional(Type.String({ description: "The question to show (single-question mode)" })),
 	options: Type.Optional(Type.Array(OptionSchema, { description: "Options (single select / multi_select mode)" })),
+	required: Type.Optional(
+		Type.Boolean({ description: "Whether an answer is required; defaults to true. Set false to allow leaving this question blank." }),
+	),
 	allowOther: Type.Optional(
 		Type.Boolean({ description: "Allow custom text input for select (single mode, default: true)" }),
 	),
@@ -182,6 +190,7 @@ function toQuestions(params: Record<string, unknown>): NormalizedQuestion[] {
 				id: String(r.id ?? `q${i + 1}`),
 				type,
 				question: String(r.question ?? ""),
+				required: r.required !== false,
 				options: isPickList ? normalizeOptions(r.options) : undefined,
 				// allowOther 仅对 select 有意义（multi_select 多选即自由组合，不追加自定义项）；未显式传 false 时按 true 处理
 				allowOther: type === "select" ? r.allowOther !== false : undefined,
@@ -198,6 +207,7 @@ function toQuestions(params: Record<string, unknown>): NormalizedQuestion[] {
 			id: "default",
 			type,
 			question: String(params.question ?? ""),
+			required: params.required !== false,
 			options: isPickList ? normalizeOptions(params.options) : undefined,
 			allowOther: type === "select" ? params.allowOther !== false : undefined,
 			placeholder: params.placeholder as string | undefined,
@@ -293,8 +303,9 @@ async function askOne(q: NormalizedQuestion, ctx: AskCtx): Promise<Answer> {
 				}
 				if (chosen.isOther) {
 					const custom = await ctx.ui.input(`${q.question}（自行输入）`, "");
-					if (custom?.trim()) {
-						return { id: q.id, type: q.type, value: custom.trim(), label: custom.trim(), wasCustom: true };
+					if (custom?.trim() || !q.required) {
+						const value = custom?.trim() ?? "";
+						return { id: q.id, type: q.type, value, label: value, wasCustom: true };
 					}
 					continue;
 				}
@@ -309,12 +320,12 @@ async function askOne(q: NormalizedQuestion, ctx: AskCtx): Promise<Answer> {
 		}
 		case "editor": {
 			const text = await ctx.ui.editor(q.question, q.prefill ?? "");
-			return { id: q.id, type: q.type, value: text };
+			return { id: q.id, type: q.type, value: q.required && !text.trim() ? null : text };
 		}
 		default: {
 			// input 类型
 			const text = await ctx.ui.input(q.question, q.placeholder ?? "");
-			return { id: q.id, type: q.type, value: text };
+			return { id: q.id, type: q.type, value: q.required && !text.trim() ? null : text };
 		}
 	}
 }
@@ -338,11 +349,13 @@ async function askBatch(
 		const complete =
 			!parsed.cancelled &&
 			answers.length >= questions.length &&
-			answers.every((answer) => {
+			answers.every((answer, index) => {
 				const value = answer?.value;
-				// multi_select 空数组视为未作答
-				if (value === null || value === undefined) return false;
-				return !Array.isArray(value) || value.length > 0;
+				// multi_select 空数组视为未作答；required:false 允许空值。
+				if (value === null || value === undefined) return questions[index]?.required === false;
+				if (Array.isArray(value)) return value.length > 0 || questions[index]?.required === false;
+				if (typeof value === "string" && questions[index]?.required !== false && !value.trim()) return false;
+				return true;
 			});
 		return { answers, cancelled: !complete };
 	} catch {
@@ -373,6 +386,7 @@ export default function (pi: ExtensionAPI) {
 				"Multiple questions: use questions:[{id,type,question,options,allowOther,...}] to ask all at once in a tabbed batch UI.",
 				"The type field is optional; it defaults to select when options are provided, otherwise input. Best practice: still set select/multi_select/confirm explicitly.",
 				"For batch mode, set review:true to require a Submit/review tab before final submit.",
+				"Text questions are required by default. Set required:false when the user may leave a field blank; blank optional answers are submitted as an empty string.",
 				"Use type:multi_select when the user should pick MULTIPLE items from a list — it renders checkboxes and returns an array of selected values.",
 			].join(" "),
 		promptSnippet: feishuLinked
@@ -392,6 +406,7 @@ export default function (pi: ExtensionAPI) {
 				"Use type:input for short free-text responses, and type:editor for multi-line content like code or long explanations.",
 				"For multiple related questions, pass a questions array instead of calling the tool repeatedly — desktop shows a tabbed batch UI and returns all answers at once.",
 				"Set allowOther:false on a select question to forbid custom input (default true).",
+				"Set required:false on a text question when leaving it blank is allowed; otherwise the submit button requires an answer.",
 				"For batch questions, set review:true to force a Submit/review tab so the user confirms all answers before submitting.",
 			],
 				parameters: AskQuestionParams,
@@ -400,9 +415,9 @@ export default function (pi: ExtensionAPI) {
 			const record = params as Record<string, unknown>;
 			const isBatch = Array.isArray(record.questions) && (record.questions as unknown[]).length > 0;
 			const questions = toQuestions(record);
-			// multi_select 的选项多选无法用 RPC 单选表达：单问题 multi_select 也强制走批量 envelope，
-			// 桌面端展开为带多选框的单个 tab，复用同一批应答协议。
-			const needsBatchEnvelope = isBatch || questions.some((q) => q.type === "multi_select");
+			// multi_select 的选项多选无法用 RPC 单选表达；允许留空的文本题也需要把
+			// required 元数据带到桌面表单，因此统一走批量 envelope。
+			const needsBatchEnvelope = isBatch || questions.some((q) => q.type === "multi_select" || q.required === false);
 
 			// 飞书绑定会话：不弹交互卡片，直接返回指引（agent 会把问题写进回复转述给用户）
 			if (feishuLinked) {

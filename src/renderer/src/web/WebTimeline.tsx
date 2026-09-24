@@ -346,8 +346,8 @@ function WebAskCard(props: {
 							type="button"
 							size="sm"
 							className="mt-2"
-							disabled={props.busy || !Array.isArray(currentAns) || currentAns.length === 0}
-							onClick={() => handleAnswerOne(currentAns ?? [])}
+							disabled={props.busy || (currentQ.required !== false && (!Array.isArray(currentAns) || currentAns.length === 0))}
+							onClick={() => handleAnswerOne(Array.isArray(currentAns) ? currentAns : [])}
 						>
 							{isLast ? t("ask.submit") : t("ask.batchNext")}
 						</Button>
@@ -373,7 +373,7 @@ function WebAskCard(props: {
 						<Button
 							type="button"
 							size="sm"
-							disabled={props.busy || !batchInput.trim()}
+							disabled={props.busy || (currentQ.required !== false && !batchInput.trim())}
 							onClick={() => handleAnswerOne(batchInput.trim())}
 						>
 							{isLast ? t("ask.submit") : t("ask.batchNext")}
@@ -444,7 +444,7 @@ function WebAskCard(props: {
 					<Button
 						type="button"
 						size="sm"
-						disabled={props.busy || !draft.trim()}
+						disabled={props.busy || (props.request.required !== false && !draft.trim())}
 						onClick={() => props.onRespond({ value: draft.trim() })}
 					>
 						{t("ask.submit")}

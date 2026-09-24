@@ -7,6 +7,7 @@ import { homedir } from "node:os";
 import type {
 	AgentBackend,
 	AgentGatewayCapability,
+	AgentUiResponse,
 	AgentRuntimeState,
 	AgentTab,
 	AppSettings,
@@ -5576,6 +5577,7 @@ export class AgentManager {
 					options: effectiveOptions,
 					placeholder: typed.placeholder as string | undefined,
 					prefill: typed.prefill as string | undefined,
+					required: typeof typed.required === "boolean" ? typed.required : undefined,
 					allowOther: typed.allowOther === true || hasCustomOption,
 					...(isSecret ? { secret: true } : {}),
 					...(isSshSecret ? { sshSecret: true } : {}),
@@ -5617,7 +5619,7 @@ export class AgentManager {
 	 * 发送 Extension UI 响应（extension_ui_response）到 pi 的 stdin。
 	 * 同时更新对应卡片消息的状态。
 	 */
-	sendUIResponse(agentId: string, requestId: string, response: { value?: string | boolean; cancelled?: boolean; confirmed?: boolean }) {
+	sendUIResponse(agentId: string, requestId: string, response: AgentUiResponse) {
 		const runtime = this.agents.get(agentId);
 		if (!runtime) return;
 

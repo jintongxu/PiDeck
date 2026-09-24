@@ -974,6 +974,7 @@ function toAgentUiRequest(
           id: typed.id,
           type: typed.type as AgentUiBatchQuestion["type"],
           question: typed.question,
+          ...(typeof typed.required === "boolean" ? { required: typed.required } : {}),
           ...(options?.length ? { options } : {}),
           ...(typeof typed.allowOther === "boolean" ? { allowOther: typed.allowOther } : {}),
           ...(typeof typed.placeholder === "string" ? { placeholder: typed.placeholder } : {}),
@@ -997,6 +998,7 @@ function toAgentUiRequest(
       : undefined,
     placeholder: typeof payload.placeholder === "string" ? payload.placeholder : undefined,
     prefill: typeof payload.prefill === "string" ? payload.prefill : undefined,
+    required: typeof payload.required === "boolean" ? payload.required : undefined,
     allowOther: payload.allowOther === true,
     completed: payload.completed === true,
     value: typeof payload.value === "string" || typeof payload.value === "boolean"

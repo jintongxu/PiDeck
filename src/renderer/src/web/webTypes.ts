@@ -53,6 +53,7 @@ export type WebPendingUiRequest = {
 	options?: string[];
 	placeholder?: string;
 	prefill?: string;
+	required?: boolean;
 	allowOther?: boolean;
 	batchQuestions?: AgentUiBatchQuestion[];
 	batchReview?: boolean;

@@ -110,6 +110,16 @@ test("批量 item 缺 type 且无 options：推断为 input", async () => {
 	assert.equal(envelope().questions[0].type, "input");
 });
 
+test("required:false 透传到批量 envelope 并允许空答案完成", async () => {
+	const tool = registerTool();
+	const { promise, envelope } = runBatch(tool, {
+		questions: [{ id: "q1", type: "input", question: "可选备注", required: false }],
+	});
+	const result = await promise;
+	assert.equal(envelope().questions[0].required, false);
+	assert.equal(result.details.cancelled, false);
+});
+
 test("显式 type 不被推断覆盖：confirm / multi_select / editor 原样生效", async () => {
 	const tool = registerTool();
 	const { promise, envelope } = runBatch(tool, {
