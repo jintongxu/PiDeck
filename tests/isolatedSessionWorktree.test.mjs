@@ -13,6 +13,9 @@ test("isolated session creation resolves the newly registered child worktree bef
   assert.match(actions, /worktreePathKey\(project\.path\) === createdPath/);
   assert.match(actions, /onProjectReady\(child\.id\)/);
   assert.match(app, /createSessionDraftWithTab\(childProjectId\)/);
+  assert.match(app, /titlePlaceholder: true/);
+  assert.match(readFileSync("src/renderer/src/hooks/useSessionActions.ts", "utf8"), /titlePlaceholder: true/);
+  assert.match(readFileSync("src/main/ipc/sessionIpc.ts", "utf8"), /input\.titlePlaceholder !== undefined/);
 });
 
 test("worktree creation keeps ordinary creation separate from create-and-open", () => {

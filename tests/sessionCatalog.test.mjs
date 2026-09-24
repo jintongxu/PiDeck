@@ -1317,3 +1317,79 @@ test("removeWithDescendants drops nested subagent catalog entries with the paren
     await rm(dir, { recursive: true, force: true });
   }
 });
+
+test("passive scans never re-home a session origin to another workspace", async () => {
+  const { SessionCatalog } = loadCatalog();
+  const dir = await mkdtemp(join(tmpdir(), "pideck-catalog-worktree-owner-"));
+  const filePath = join(dir, "sessions.json");
+  try {
+    const catalog = new SessionCatalog(filePath);
+    await catalog.load();
+    const originSummary = summary({
+      filePath: "C:/repo/.pi/sessions/shared.jsonl",
+      id: "C:/repo/.pi/sessions/shared.jsonl",
+      name: "AI summarized title",
+      updatedAt: 100,
+    });
+    const [childRecord] = await catalog.mergeScanned("worktree-child", [originSummary]);
+    assert.ok(childRecord);
+
+    // A root/worktree scan may observe the same global session file, but discovery
+    // must not steal the existing catalog owner or its generated title.
+    const rootRecords = await catalog.mergeScanned("root-project", [
+      { ...originSummary, name: "stale root fallback", updatedAt: 200 },
+    ]);
+    assert.equal(rootRecords.length, 0);
+    assert.equal(catalog.listEntries().length, 1);
+    assert.equal(catalog.getRecord(childRecord.id)?.projectId, "worktree-child");
+    assert.equal(catalog.getRecord(childRecord.id)?.title, "AI summarized title");
+
+    // An explicit title ending in "agent" is not a placeholder and must remain
+    // authoritative even when an older scan carries another name.
+    const explicit = await catalog.createDraft({
+      projectId: "worktree-child",
+      title: "Release agent",
+      environment: "native",
+      titlePlaceholder: false,
+    });
+    await catalog.attachRuntime({
+      sessionId: explicit.id,
+      filePath: "C:/repo/.pi/sessions/release.jsonl",
+    });
+    const explicitRecords = await catalog.mergeScanned("worktree-child", [summary({
+      filePath: "C:/repo/.pi/sessions/release.jsonl",
+      id: "C:/repo/.pi/sessions/release.jsonl",
+      name: "Old scan title",
+      updatedAt: 50,
+    })]);
+    assert.equal(explicitRecords.find((record) => record.id === explicit.id)?.title, "Release agent");
+
+    const explicitlyUntitled = await catalog.createDraft({
+      projectId: "worktree-child",
+      title: "Untitled",
+      environment: "native",
+      titlePlaceholder: false,
+    });
+    await catalog.attachRuntime({
+      sessionId: explicitlyUntitled.id,
+      filePath: "C:/repo/.pi/sessions/explicitly-untitled.jsonl",
+    });
+    const explicitlyUntitledRecords = await catalog.mergeScanned("worktree-child", [summary({
+      filePath: "C:/repo/.pi/sessions/explicitly-untitled.jsonl",
+      id: "C:/repo/.pi/sessions/explicitly-untitled.jsonl",
+      name: "Do not replace explicit Untitled",
+      updatedAt: 50,
+    })]);
+    assert.equal(explicitlyUntitledRecords.find((record) => record.id === explicitlyUntitled.id)?.title, "Untitled");
+
+    const reloaded = new SessionCatalog(filePath);
+    await reloaded.load();
+    assert.equal(reloaded.listEntries().length, 3);
+    assert.equal(reloaded.getRecord(childRecord.id)?.projectId, "worktree-child");
+    assert.equal(reloaded.getRecord(childRecord.id)?.title, "AI summarized title");
+    assert.equal(reloaded.getRecord(explicit.id)?.title, "Release agent");
+    assert.equal(reloaded.getRecord(explicitlyUntitled.id)?.title, "Untitled");
+  } finally {
+    await rm(dir, { recursive: true, force: true });
+  }
+});

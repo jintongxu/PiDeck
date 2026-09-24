@@ -1694,6 +1694,7 @@ export function App() {
           projectId: project.id,
           title: draftBackend === "dsh" ? `${project.name} DSH` : `${project.name} agent`,
           backend: draftBackend,
+          titlePlaceholder: true,
           ...(welcomeModel ? { welcomeModel } : {}),
           ...(welcomeThinking ? { thinkingLevel: welcomeThinking } : {}),
         });

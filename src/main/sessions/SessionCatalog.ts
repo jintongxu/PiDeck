@@ -66,6 +66,8 @@ export type SessionCatalogEntry = {
 	proxy?: SessionProxyOverride;
 	/** 仅该会话启用 PiDeck 内置 AI 标题旁路。 */
 	autoSessionTitle?: boolean;
+	/** 新建草稿的 `<project> agent`/Untitled 占位标题；显式改名后清除。 */
+	titlePlaceholder?: boolean;
 	createdAt: number;
 	updatedAt: number;
 };
@@ -127,11 +129,20 @@ function catalogDisplayTitle(title: string | undefined): string | undefined {
 }
 
 /** 占位标题判定：catalog 无真实名称时落成 Untitled（pi 时间戳 stem 加载时也被清成它），
- *  只有这类标题才值得读头部补名，否则每次扫描都会重复读盘。 */
+ * 只有这类标题才值得读头部补名，否则每次扫描都会重复读盘。 */
 function isPlaceholderCatalogTitle(title: string | undefined): boolean {
 	if (!title) return true;
 	if (looksLikePiSessionFileStem(title)) return true;
 	return /^untitled(?: session)?$/i.test(title);
+}
+
+/** Backward-compatible recognition for pre-flag drafts created with `<project> agent`. */
+function isGeneratedAgentPlaceholder(title: string | undefined): boolean {
+	return typeof title === "string" && /(?:^|\s)agent$/i.test(title.trim());
+}
+
+function isDraftTitlePlaceholder(title: string): boolean {
+	return isPlaceholderCatalogTitle(title) || isGeneratedAgentPlaceholder(title);
 }
 
 function cloneEntry(entry: SessionCatalogEntry): SessionCatalogEntry {
@@ -519,6 +530,8 @@ export class SessionCatalog {
 		agentPreset?: string;
 		/** 仅该会话启用 PiDeck 内置 AI 标题旁路。 */
 		autoSessionTitle?: boolean;
+		/** 创建调用明确标记的默认占位标题；显式命名的会话不应被扫描结果覆盖。 */
+		titlePlaceholder?: boolean;
 		/** 外部（dsh-web 等）会话导入：host 会话已存在，条目直接置 active（重启不清理）。 */
 		dshSessionId?: string;
 		/**
@@ -595,6 +608,11 @@ export class SessionCatalog {
 				status: input.dshSessionId ? "active" : "draft",
 				model: input.model,
 				thinkingLevel: input.thinkingLevel,
+				titlePlaceholder: input.titlePlaceholder === true
+					? true
+					: input.titlePlaceholder === false
+						? false
+						: isDraftTitlePlaceholder(input.title),
 				permissionPreset: input.permissionPreset,
 				agentPreset: input.agentPreset,
 				autoSessionTitle: input.autoSessionTitle,
@@ -631,7 +649,10 @@ export class SessionCatalog {
 		this.assertLoaded();
 		const transient = this.transientEntries.get(id);
 		if (transient) {
-			if (patch.title !== undefined) transient.title = patch.title;
+			if (patch.title !== undefined) {
+				transient.title = patch.title;
+				transient.titlePlaceholder = false;
+			}
 			if (patch.model !== undefined) transient.model = patch.model ?? undefined;
 			if (patch.thinkingLevel !== undefined) transient.thinkingLevel = patch.thinkingLevel ?? undefined;
 			if (patch.permissionPreset !== undefined) transient.permissionPreset = patch.permissionPreset ?? undefined;
@@ -648,7 +669,10 @@ export class SessionCatalog {
 		}
 		const entry = await this.enqueueMutation((entries) => {
 			const nextEntry = this.requireEntry(entries, id);
-			if (patch.title !== undefined) nextEntry.title = patch.title;
+			if (patch.title !== undefined) {
+				nextEntry.title = patch.title;
+				nextEntry.titlePlaceholder = false;
+			}
 			if (patch.model !== undefined) nextEntry.model = patch.model ?? undefined;
 			if (patch.thinkingLevel !== undefined) nextEntry.thinkingLevel = patch.thinkingLevel ?? undefined;
 			if (patch.permissionPreset !== undefined) nextEntry.permissionPreset = patch.permissionPreset ?? undefined;
@@ -933,7 +957,19 @@ export class SessionCatalog {
 				// 有父关系（子代理折叠）的会话不标记——fork 与子代理是两种形态。
 				const fetchedForkedFlag = fetchedForked.get(originKey);
 				const importedSourceId = getImportedSessionSourceId(summary);
-				let entry = byOrigin.get(originKey);
+				const matchedEntry = byOrigin.get(originKey);
+				let entry = matchedEntry;
+				// 兼容历史上已经存在的重复 origin：优先使用本次扫描项目自己的映射，
+				// 这样升级后该工作区仍能刷新标题；没有本项目映射时才拒绝跨工作区认领。
+				if (entry && entry.projectId !== projectId) {
+					entry = entries.find((candidate) => candidate.originKey === originKey && candidate.projectId === projectId);
+				}
+				if (!entry && matchedEntry) {
+					// 被动扫描只负责刷新条目，不能把同一份会话从已有工作区“偷走”。
+					// worktree 根项目和子项目会并行扫描同一套 Pi 会话根目录；若路径归属
+					// 判断出现重叠，最后完成的扫描不应改写 catalog 的项目所有权。
+					continue;
+				}
 				if (!entry) {
 					const now = summary.updatedAt || Date.now();
 					entry = {
@@ -952,6 +988,9 @@ export class SessionCatalog {
 						wslUser: summary.wsl ? context.wslUser : undefined,
 						importedSourceId,
 						status: "active",
+						titlePlaceholder: isPlaceholderCatalogTitle(
+							catalogDisplayTitle(summary.name) || catalogDisplayTitle(fetchedTitle),
+						),
 						parentSessionPath: summary.parentSessionPath ?? fetchedParent,
 						forked: (summary.parentSessionPath ?? fetchedParent) ? undefined : fetchedForkedFlag,
 						createdAt: now,
@@ -963,21 +1002,32 @@ export class SessionCatalog {
 				} else {
 					// 旧 catalog 可能已经保存了时间戳文件名；不能在清洗失败时用 entry.title 回退，
 					// 否则每次扫描都会把这个错误标题原样保留下来，重启后仍显示时间戳。
-					// 已存在真实标题时，弱回退（首条消息文本）不得覆盖（2026-09 现场：
-					// 自动命名 session_info 被第二轮消息挤出窗口盲区后被消息文本冲掉）；
-					// 权威回读（session_info 命中）与占位标题升级不受此限。
-					const nextTitle = catalogDisplayTitle(summary.name)
-						|| (fetchedAuthoritative || isPlaceholderCatalogTitle(entry.title)
-							? catalogDisplayTitle(fetchedTitle)
-							: undefined)
+					// catalog.update（例如 AI 自动命名）会先于扫描结果写入较新的 updatedAt。
+					// 这时扫描拿到的旧 session_info/首条消息不能回滚已生成的标题。
+					const scanIsCurrent = summary.updatedAt > entry.updatedAt;
+					const canUseScannedTitle = entry.titlePlaceholder !== false && (
+						entry.titlePlaceholder === true
+						|| (entry.titlePlaceholder === undefined && isGeneratedAgentPlaceholder(entry.title))
+						|| isPlaceholderCatalogTitle(entry.title)
+					);
+					const scannedTitle = canUseScannedTitle
+						? catalogDisplayTitle(summary.name) || catalogDisplayTitle(fetchedTitle)
+						: scanIsCurrent
+							? catalogDisplayTitle(summary.name)
+								|| (fetchedAuthoritative ? catalogDisplayTitle(fetchedTitle) : undefined)
+							: undefined;
+					const nextTitle = scannedTitle
 						|| catalogDisplayTitle(entry.title)
 						|| scannedFileStemTitle(summary.filePath);
+					const nextTitlePlaceholder = scannedTitle && !isPlaceholderCatalogTitle(scannedTitle)
+						? false
+						: entry.titlePlaceholder;
+					const nextUpdatedAt = Math.max(entry.updatedAt, summary.updatedAt);
 					// 父关系最终值：新探测值优先，缺失时保留旧值（轻量扫描恒缺省，不能清掉已持久化的父）。
 					const nextParent = summary.parentSessionPath ?? fetchedParent ?? entry.parentSessionPath;
 					// fork 标记同样只增补、不清空：未探测到（轻量扫描/普通会话）保留持久化值。
 					const nextForked = nextParent ? entry.forked : (fetchedForkedFlag || entry.forked);
 					if (
-						entry.projectId !== projectId ||
 						entry.filePath !== summary.filePath ||
 						entry.title !== nextTitle ||
 						entry.source !== (summary.source ?? "pi") ||
@@ -988,9 +1038,11 @@ export class SessionCatalog {
 						entry.status !== "active" ||
 						entry.parentSessionPath !== nextParent ||
 						entry.forked !== nextForked ||
-						entry.updatedAt !== summary.updatedAt
+						entry.titlePlaceholder !== nextTitlePlaceholder ||
+						entry.updatedAt !== nextUpdatedAt
 					) {
-						entry.projectId = projectId;
+						// entry.projectId is intentionally not reassigned here. Passive discovery
+						// must not move an existing session between workspaces (see guard above).
 						entry.filePath = summary.filePath;
 						entry.title = nextTitle;
 						entry.source = summary.source ?? "pi";
@@ -1007,7 +1059,8 @@ export class SessionCatalog {
 						// 故此处只增补、不清空——新值优先，其次保留旧值。
 						entry.parentSessionPath = summary.parentSessionPath ?? fetchedParent ?? entry.parentSessionPath;
 						entry.forked = nextForked;
-						entry.updatedAt = summary.updatedAt;
+						entry.titlePlaceholder = nextTitlePlaceholder;
+						entry.updatedAt = nextUpdatedAt;
 						changed = true;
 					}
 				}
@@ -1117,7 +1170,12 @@ export class SessionCatalog {
 		return {
 			id: entry.id,
 			projectId: entry.projectId,
-			title: catalogDisplayTitle(summary?.name) || catalogDisplayTitle(entry.title) || "Untitled",
+			// A scan summary can be older than a queued runtime title update, so only
+			// let it fill a known placeholder. Real catalog titles (including AI names)
+			// remain authoritative in renderer projections.
+			title: (entry.titlePlaceholder !== false && (entry.titlePlaceholder === true || isPlaceholderCatalogTitle(entry.title))
+				? catalogDisplayTitle(summary?.name) || catalogDisplayTitle(entry.title)
+				: catalogDisplayTitle(entry.title)) || "Untitled",
 			noSession: entry.noSession,
 			source: summary?.source ?? entry.source,
 			environment: summary ? getSessionEnvironment(summary) : entry.environment,
@@ -1142,7 +1200,9 @@ export class SessionCatalog {
 			proxy: entry.proxy ? { ...entry.proxy } : undefined,
 			autoSessionTitle: entry.autoSessionTitle,
 			createdAt: entry.createdAt,
-			updatedAt: summary?.updatedAt ?? entry.updatedAt,
+			// A stale scan summary must not hide a newer catalog mutation (for example
+			// an AI-generated title) from renderer consumers of this record.
+			updatedAt: Math.max(entry.updatedAt, summary?.updatedAt ?? entry.updatedAt),
 			wsl: summary?.wsl,
 			codexSessionId: summary?.codexSessionId,
 			codexThreadSource: summary?.codexThreadSource,

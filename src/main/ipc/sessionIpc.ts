@@ -666,6 +666,7 @@ export function registerSessionIpc(deps: SessionIpcDeps): void {
 				model,
 				thinkingLevel,
 				...(input.autoSessionTitle === true ? { autoSessionTitle: true } : {}),
+				...(input.titlePlaceholder !== undefined ? { titlePlaceholder: input.titlePlaceholder } : {}),
 			});
 			void appLogger.info("session", "Session draft created", {
 				sessionId: draft.id,
