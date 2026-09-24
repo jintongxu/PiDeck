@@ -185,14 +185,13 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 	refinementTargetKeyRef.current = refinementTargetKey;
 	selectedIdRef.current = selectedId;
 	const loadRequestRef = useRef(0);
+	const workspaceKeyRef = useRef<string | null>(null);
 
-	/** A workspace transition starts with clean editor/model state and cancels private runtimes. */
+	/** Reset editor-only state; AI refinement and brainstorm summary runtimes intentionally survive closing the modal. */
 	const resetWorkspaceState = useCallback(() => {
 		loadRequestRef.current += 1;
 		workspaceRequestGateRef.current.invalidate();
 		modelRequestRef.current += 1;
-		refinement.cancel();
-		plans.cancel();
 		setSelectedId(null);
 		setFilter("active");
 		setDraft(emptyDraft());
@@ -213,7 +212,7 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 		setImplementationModels([]);
 		setImplementationModelsReport(null);
 		setImplementationModelPickerOpen(false);
-	}, [plans.cancel, refinement.cancel]);
+	}, []);
 
 	const load = useCallback(async (id: string) => {
 		const requestId = loadRequestRef.current + 1;
@@ -231,7 +230,15 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 	}, [prefill?.projectId, projectId, requestedIdeaId, setIdeasByProject]);
 
 	useEffect(() => {
-		if (!open || !projectId) return;
+		if (!open) {
+			if (workspaceKeyRef.current !== null) {
+				workspaceKeyRef.current = null;
+				resetWorkspaceState();
+			}
+			return;
+		}
+		if (!projectId || workspaceKeyRef.current === projectId) return;
+		workspaceKeyRef.current = projectId;
 		resetWorkspaceState();
 		workspaceRequestGateRef.current.begin(projectId);
 	}, [open, projectId, resetWorkspaceState]);
@@ -295,11 +302,11 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 			setRefinementDraft(refinement.result);
 			setRefinementOpen(true);
 		}
-	}, [refinement.result, refinement.resultTargetKey, refinementTargetKey]);
-
-	useEffect(() => {
-		refinement.cancel();
-	}, [draft.body, draft.kind, draft.title, refinement.cancel, selectedId]);
+		if (plans.summary && plans.summaryTargetKey === refinementTargetKey && plans.summarySourceIdeaId === selectedId) {
+			setRefinementDraft(plans.summary);
+			setRefinementOpen(true);
+		}
+	}, [plans.summary, plans.summarySourceIdeaId, plans.summaryTargetKey, refinement.result, refinement.resultTargetKey, refinementTargetKey, selectedId]);
 
 	const insertBodyAtSelection = useCallback((value: string) => {
 		const textarea = bodyRef.current;
@@ -359,6 +366,7 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 			: undefined;
 		void refinement.refine({
 			projectId,
+			title: draft.title,
 			targetKey: refinementTargetKey,
 			...(refinementModel ? { model: refinementModel } : {}),
 			...(refinementThinkingLevel ? { thinkingLevel: refinementThinkingLevel } : {}),
@@ -588,6 +596,8 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 				sourceSessionId: latestLinkedSessionId,
 				title: selected.title,
 				body: selected.body,
+				targetKey: refinementTargetKey,
+				sourceIdeaId,
 				...(refinementModel ? { model: refinementModel } : {}),
 				...(refinementThinkingLevel ? { thinkingLevel: refinementThinkingLevel } : {}),
 				onCompleted: (summary) => {
@@ -595,14 +605,14 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 					setRefinementDraft(summary);
 					setRefinementOpen(true);
 				},
-				onError: (error) => { if (workspaceRequestGateRef.current.isCurrent(token)) showNotice(projectIdeaPlansError(error) ?? error, 5000, "error"); },
+				onError: () => undefined,
 			});
 		} catch (reason) {
 			if (workspaceRequestGateRef.current.isCurrent(token)) showNotice(reason instanceof Error ? reason.message : String(reason), 5000, "error");
 		} finally {
 			if (workspaceRequestGateRef.current.isCurrent(token)) setStartingPlansSource(false);
 		}
-	}, [availableSessionIds, latestLinkedSessionId, plans, projectId, refinementModel, refinementThinkingLevel, selected, startingPlansSource]);
+	}, [availableSessionIds, latestLinkedSessionId, plans, projectId, refinementModel, refinementTargetKey, refinementThinkingLevel, selected, startingPlansSource]);
 	const remove = useCallback(async (idea: ProjectIdea) => {
 		if (!projectId) return;
 		const token = workspaceRequestGateRef.current.capture(projectId);
@@ -630,12 +640,8 @@ export function ProjectIdeasModal({ onContinue, onBrainstorm, onPlansStarted, on
 		}
 	}, [plans.cancel, projectId, refinement.cancel, setIdeasByProject]);
 
-	useEffect(() => {
-		if (!open) resetWorkspaceState();
-	}, [open, resetWorkspaceState]);
-
 	return (
-		<Dialog open={open} onOpenChange={(next) => { if (!next) { if (executionInFlight) return; resetWorkspaceState(); close(); } else setOpen(next); }}>
+		<Dialog open={open} onOpenChange={(next) => { if (!next) { if (executionInFlight) return; close(); } else setOpen(next); }}>
 			<DialogContent size="xl" showCloseButton className="flex h-[min(720px,calc(100vh-64px))] max-w-[min(960px,calc(100vw-48px))] flex-col overflow-hidden p-0">
 				<DialogHeader className="border-b border-border-subtle px-6 py-4 text-left">
 					<div className="flex items-center gap-2">

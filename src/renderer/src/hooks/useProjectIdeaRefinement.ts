@@ -9,7 +9,9 @@ import {
 import { sessionRuntimeBySessionIdAtomFamily } from "../atoms/session-selectors";
 import { effectiveAgentBackendAtom } from "../atoms/app-ui-atoms";
 import { desktopApi } from "../desktopApi";
+import { t } from "../i18n";
 import { buildAskContextBlock } from "../utils/askPanelContext";
+import { showNotice } from "../utils/notice";
 import { parseProjectIdeaRefinement } from "../utils/projectIdeaRefinement";
 
 const RUNTIME_TIMEOUT_MS = 15_000;
@@ -19,6 +21,7 @@ type RequestState = {
 	requestId: number;
 	sessionId: string;
 	targetKey: string;
+	title: string;
 	sent: boolean;
 	baselineAssistantIds: ReadonlySet<string>;
 };
@@ -68,23 +71,37 @@ export function useProjectIdeaRefinement() {
 			.reverse()
 			.find((message) => message.role === "assistant" && !request.baselineAssistantIds.has(message.id) && message.text.trim())?.text;
 		const busy = runtime?.status === "starting" || runtime?.status === "running" || Boolean(runtime?.state?.isStreaming);
+		const terminated = runtime?.status === "error" || runtime?.status === "closed" || runtime?.status === "detached";
+		if (!assistantText && terminated) {
+			clearResponseTimer();
+			requestStateRef.current = null;
+			setRunning(false);
+			setError("PROJECT_IDEA_REFINEMENT_RUNTIME_TERMINATED");
+			showNotice(t("projectIdeas.backgroundRefinementFailed", { title: request.title }), 8000, "error", t("projectIdeas.backgroundTaskFailedTitle"));
+			void cleanup(sessionId);
+			return;
+		}
 		if (!assistantText || busy) return;
 		clearResponseTimer();
 		requestStateRef.current = null;
 		try {
-			setResult(parseProjectIdeaRefinement(assistantText));
+			const parsed = parseProjectIdeaRefinement(assistantText);
+			setResult(parsed);
 			setResultTargetKey(request.targetKey);
 			setRunning(false);
+			showNotice(t("projectIdeas.backgroundRefinementCompleted", { title: request.title }), 8000, "info", t("projectIdeas.backgroundTaskCompletedTitle"));
 			void cleanup(sessionId);
 		} catch {
 			setError("PROJECT_IDEA_REFINEMENT_RESPONSE_INVALID");
 			setRunning(false);
+			showNotice(t("projectIdeas.backgroundRefinementFailed", { title: request.title }), 8000, "error", t("projectIdeas.backgroundTaskFailedTitle"));
 			void cleanup(sessionId);
 		}
 	}, [cache?.messages, cleanup, clearResponseTimer, running, runtime?.state?.isStreaming, runtime?.status, sessionId]);
 
 	const refine = useCallback(async (input: {
 		projectId: string;
+		title: string;
 		prompt: string;
 		targetKey: string;
 		model?: { provider: string; modelId: string };
@@ -93,6 +110,9 @@ export function useProjectIdeaRefinement() {
 		const requestId = requestRef.current + 1;
 		requestRef.current = requestId;
 		clearResponseTimer();
+		const previousSessionId = activeSessionRef.current;
+		activeSessionRef.current = null;
+		if (previousSessionId) void cleanup(previousSessionId);
 		setError(null);
 		setResult(null);
 		setResultTargetKey(null);
@@ -135,6 +155,7 @@ export function useProjectIdeaRefinement() {
 				requestId,
 				sessionId: session.id,
 				targetKey: input.targetKey,
+				title: input.title,
 				sent: false,
 				baselineAssistantIds: new Set(messages.filter((message) => message.role === "assistant").map((message) => message.id)),
 			};
@@ -147,21 +168,27 @@ export function useProjectIdeaRefinement() {
 			requestStateRef.current = { ...requestStateRef.current, sent: true };
 			responseTimerRef.current = setTimeout(() => {
 				if (requestRef.current !== requestId || !mountedRef.current) return;
+				const request = requestStateRef.current;
 				requestStateRef.current = null;
 				setRunning(false);
 				setError("PROJECT_IDEA_REFINEMENT_TIMEOUT");
+				if (request) showNotice(t("projectIdeas.backgroundRefinementFailed", { title: request.title }), 8000, "error", t("projectIdeas.backgroundTaskFailedTitle"));
 				void cleanup(session.id);
 			}, RESPONSE_TIMEOUT_MS);
 			return true;
 		} catch (reason) {
 			if (createdSessionId) await cleanup(createdSessionId);
+			const error = reason instanceof Error ? reason.message : String(reason);
 			if (requestRef.current === requestId && mountedRef.current) {
 				setRunning(false);
-				setError(reason instanceof Error ? reason.message : String(reason));
+				setError(error);
+				showNotice(t("projectIdeas.backgroundRefinementFailed", { title: input.title }), 8000, "error", t("projectIdeas.backgroundTaskFailedTitle"));
 			}
 			return false;
 		}
 	}, [backend, cleanup, clearResponseTimer, store]);
+
+	const clearError = useCallback(() => setError(null), []);
 
 	const cancel = useCallback(() => {
 		requestRef.current += 1;
@@ -178,6 +205,8 @@ export function useProjectIdeaRefinement() {
 	useEffect(() => {
 		mountedRef.current = true;
 		return () => {
+			// The controller is mounted at App scope, so this cleanup runs when the
+			// renderer really exits, not when the project-ideas dialog is closed.
 			mountedRef.current = false;
 			requestRef.current += 1;
 			clearResponseTimer();
@@ -187,5 +216,5 @@ export function useProjectIdeaRefinement() {
 		};
 	}, [cleanup, clearResponseTimer]);
 
-	return { refine, cancel, running, error, result, resultTargetKey, contextBuilder: buildAskContextBlock };
+	return { refine, cancel, clearError, running, error, result, resultTargetKey, contextBuilder: buildAskContextBlock };
 }
