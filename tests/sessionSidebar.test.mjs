@@ -499,6 +499,18 @@ test("show-more row renders the count separately and drops the trailing unit", (
   assert.match(sessionTree, /\{!props\.nested && \(/);
 });
 
+test("show-more and collapse controls share stable flex positioning", () => {
+  const foundation = readFileSync("src/renderer/src/styles/foundation.css", "utf8");
+  const buttonRule = foundation.match(/\.session-more-btn\s*\{[^}]*\}/)?.[0] ?? "";
+
+  // 同排有「收起」时，查看更多必须只占 flex 剩余空间；stretch 会让它绕过
+  // flex 分配，在侧栏宽度变化或多次切换后出现溢出/错位。
+  assert.match(buttonRule, /flex:\s*1 1 auto/);
+  assert.match(buttonRule, /min-width:\s*0/);
+  assert.match(buttonRule, /width:\s*auto/);
+  assert.doesNotMatch(buttonRule, /fill-available|width:\s*stretch/);
+});
+
 test("activity page keeps failed/stopped agents visible (error/closed)", () => {
   const activeTree = readFileSync(
     "src/renderer/src/components/sidebar/ActiveSessionsTree.tsx",

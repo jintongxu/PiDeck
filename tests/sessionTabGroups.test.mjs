@@ -6,6 +6,7 @@ const {
   buildProjectTabGroups,
   projectGroupColor,
   GROUP_COLOR_VALUES,
+  reorderProjectGroupedSessionTabs,
 } = loadTsCommonJs("src/renderer/src/utils/sessionTabGroups.ts");
 
 const projectOf = (map) => (sessionId) =>
@@ -87,4 +88,42 @@ test("buildProjectTabGroups: 组内数量与全部 tab 覆盖（pinned+groups+lo
     ...result.loose,
   ];
   assert.equal(JSON.stringify(all.sort()), JSON.stringify([...tabs].sort()));
+});
+
+test("reorderProjectGroupedSessionTabs: 跨项目拖动移动整个视觉分组", () => {
+  const next = reorderProjectGroupedSessionTabs(
+    ["a1", "b1", "a2", "c1"],
+    [],
+    "a1",
+    "c1",
+    "after",
+    projectOf({ a1: { id: "A" }, a2: { id: "A" }, b1: { id: "B" }, c1: { id: "C" } }),
+  );
+  assert.equal(JSON.stringify(next.tabs), JSON.stringify(["b1", "c1", "a1", "a2"]));
+  assert.equal(JSON.stringify(next.pinned), JSON.stringify([]));
+});
+
+test("reorderProjectGroupedSessionTabs: 同项目拖动只调整组内顺序", () => {
+  const next = reorderProjectGroupedSessionTabs(
+    ["a1", "a2", "b1"],
+    [],
+    "a2",
+    "a1",
+    "before",
+    projectOf({ a1: { id: "A" }, a2: { id: "A" }, b1: { id: "B" } }),
+  );
+  assert.equal(JSON.stringify(next.tabs), JSON.stringify(["a2", "a1", "b1"]));
+});
+
+test("reorderProjectGroupedSessionTabs: 跨固定区仍保持固定前置不变量", () => {
+  const next = reorderProjectGroupedSessionTabs(
+    ["p1", "a1", "b1"],
+    ["p1"],
+    "a1",
+    "p1",
+    "before",
+    projectOf({ a1: { id: "A" }, b1: { id: "B" }, p1: { id: "P" } }),
+  );
+  assert.equal(JSON.stringify(next.tabs), JSON.stringify(["a1", "p1", "b1"]));
+  assert.equal(JSON.stringify(next.pinned), JSON.stringify(["a1", "p1"]));
 });

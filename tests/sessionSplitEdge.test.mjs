@@ -1,6 +1,11 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
+import { loadTsCommonJs } from "./helpers/loadTsCommonJs.mjs";
+
+const { reorderSplitLayoutSessions } = loadTsCommonJs(
+  "src/renderer/src/utils/sessionSplitEdge.ts",
+);
 
 const edgeSrc = readFileSync("src/renderer/src/utils/sessionSplitEdge.ts", "utf8");
 const stage = readFileSync("src/renderer/src/components/session/SessionSplitStage.tsx", "utf8");
@@ -245,6 +250,19 @@ describe("session split edge resolution", () => {
     assert.equal(resolveSessionSplitEdge(500, 40, rect), "top");
     assert.equal(resolveSessionSplitEdge(500, 760, rect), "bottom");
     assert.equal(resolveSessionSplitEdge(500, 400, rect), null);
+  });
+
+  it("reorders split layout leaves without changing pane shape", () => {
+    const layout = nestedLayout();
+    const next = reorderSplitLayoutSessions(layout, "c", "a", "before");
+    assert.equal(JSON.stringify(next), JSON.stringify({
+      orientation: "horizontal",
+      panels: [
+        { kind: "nested", orientation: "vertical", first: "c", second: "a" },
+        { kind: "session", sessionId: "b" },
+      ],
+    }));
+    assert.equal(JSON.stringify(layout), JSON.stringify(nestedLayout()));
   });
 
   it("builds two-pane layout with dragged session on drop side", () => {
@@ -889,6 +907,9 @@ describe("session split edge resolution", () => {
     assert.match(stage, /SESSION_SPLIT_EDGE_THRESHOLD|resolveSessionSplitEdge/);
     assert.match(tabs, /SESSION_TAB_DRAG_MIME/);
     assert.match(tabs, /onDragSessionChange/);
+    assert.match(tabs, /applyDragTarget/);
+    assert.match(tabs, /layout\n\s+transition=\{TAB_REORDER_TRANSITION\}/);
+    assert.doesNotMatch(tabs, /dragIndicator|props\.indicator\s*\?|bg-primary.*w-0\.5/);
     assert.match(app, /SessionSplitStage/);
     assert.match(app, /ChatSessionPane/);
     assert.match(app, /workspaceChrome\.dropSplit/);

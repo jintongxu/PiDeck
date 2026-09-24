@@ -8,16 +8,17 @@ import {
 import {
   openPermanentSessionTab,
   openPreviewSessionTab,
-  reorderSessionTabs,
   togglePinSessionTab,
   type SessionTabOpenMode,
 } from "../utils/sessionTabs";
+import { reorderProjectGroupedSessionTabs } from "../utils/sessionTabGroups";
 import {
   buildSplitLayoutFromDrop,
   edgeToOrientation,
   insertRootPaneFromDrop,
   nestSplitPaneFromDrop,
   replaceSplitPaneFromDrop,
+  reorderSplitLayoutSessions,
   resolveSplitAfterClose,
   resolveSplitHostSessionId,
   splitLayoutSessionIds,
@@ -332,10 +333,31 @@ export function useSessionWorkspaceChrome(options: {
     position: "before" | "after",
   ) => {
     const { tabs, pinned } = tabsSnapshotRef.current;
-    const next = reorderSessionTabs(tabs, pinned, sourceId, targetId, position);
+    const splitIds = tabsSnapshotRef.current.split
+      ? splitLayoutSessionIds(tabsSnapshotRef.current.split)
+      : [];
+    const next = reorderProjectGroupedSessionTabs(
+      tabs,
+      pinned,
+      sourceId,
+      targetId,
+      position,
+      (sessionId) => {
+        const projectId = sessionRecords[sessionId]?.projectId;
+        return projectId ? { projectId } : undefined;
+      },
+      splitIds,
+    );
     setSessionTabIds(next.tabs);
     setPinnedSessionTabIds(next.pinned);
-  }, [setSessionTabIds]);
+    if (tabsSnapshotRef.current.split && splitIds.includes(sourceId) && splitIds.includes(targetId)) {
+      setSplitLayout((layout) =>
+        layout
+          ? reorderSplitLayoutSessions(layout, sourceId, targetId, position)
+          : layout,
+      );
+    }
+  }, [sessionRecords, setSessionTabIds]);
 
   useEffect(() => {
     try {
@@ -366,17 +388,15 @@ export function useSessionWorkspaceChrome(options: {
   const dropSplit = useCallback((draggedSessionId: string, target: SessionSplitDropTarget) => {
     setDraggingSessionId(null);
     const snap = tabsSnapshotRef.current;
-
-    // 分屏拖入 → 常驻（用 snapshot，避免 stale tabs）；侧栏拖入尚未在 Tab 栏的会话也要先登记
+    // Stage 的落点可能在拖拽期间被关闭/切换；先确认目标仍存在，
+    // 避免无效 drop 留下一个已经无法呈现的常驻 Tab。
+    if (!store.get(sessionRecordByIdAtomFamily(target.sessionId))) return;
     const permanent = openPermanentSessionTab(
       snap.tabs,
       snap.pinned,
       snap.previewId,
       draggedSessionId,
     );
-    setSessionTabIds(permanent.tabs);
-    setPreviewSessionTabId(permanent.previewId);
-
     const layout = snap.split;
     // 视图 solo（无布局，或布局存在但焦点会话不在布局中）→ 根层双栏（旧布局随拖拽重组丢弃）
     const inLayout = layout
@@ -397,9 +417,11 @@ export function useSessionWorkspaceChrome(options: {
         draggedSessionId,
         edge: target.edge,
       });
-      if (next) {
-        setSplitLayout(next);
-      }
+      if (!next) return;
+      // 只有落点已确认可接受时才登记新 Tab；无效/过期落点不能留下隐性常驻会话。
+      setSessionTabIds(permanent.tabs);
+      setPreviewSessionTabId(permanent.previewId);
+      setSplitLayout(next);
       return;
     }
 
@@ -425,17 +447,18 @@ export function useSessionWorkspaceChrome(options: {
               sessionId: target.sessionId,
               edge: target.edge,
             });
-    if (next) {
-      setSplitLayout(next);
-      // 中心替换了当前聚焦会话：焦点迁到拖入会话，避免「替换聚焦面板后焦点悬空」
-      if (
-        target.kind === "session-center" &&
-        target.sessionId === snap.currentSessionId
-      ) {
-        const record = store.get(sessionRecordByIdAtomFamily(draggedSessionId));
-        if (record) {
-          focusHandlersRef.current.focusSession(record.projectId, draggedSessionId);
-        }
+    if (!next) return;
+    setSessionTabIds(permanent.tabs);
+    setPreviewSessionTabId(permanent.previewId);
+    setSplitLayout(next);
+    // 中心替换了当前聚焦会话：焦点迁到拖入会话，避免「替换聚焦面板后焦点悬空」
+    if (
+      target.kind === "session-center" &&
+      target.sessionId === snap.currentSessionId
+    ) {
+      const record = store.get(sessionRecordByIdAtomFamily(draggedSessionId));
+      if (record) {
+        focusHandlersRef.current.focusSession(record.projectId, draggedSessionId);
       }
     }
   }, [setSessionTabIds, store]);
