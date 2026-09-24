@@ -1056,6 +1056,11 @@ const api = {
 				projectId,
 				worktreePath,
 			) as Promise<boolean>,
+		worktreeStatus: (projectId: string) =>
+			ipcRenderer.invoke(
+				ipcChannels.gitWorktreeStatus,
+				projectId,
+			) as Promise<import("../shared/types").GitWorktreeStatus[]>,
 		// Git 增强：提交历史、分支对比、Graph
 		commitLog: (projectId: string, options?: { maxEntries?: number; ref?: string; path?: string; allBranches?: boolean }, repoPath?: string) =>
 			ipcRenderer.invoke(

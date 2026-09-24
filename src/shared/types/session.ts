@@ -191,6 +191,8 @@ export type SessionRecord = {
 	dshSessionId?: string;
 	/** 会话级代理覆盖（缺省 = 跟随全局）；沿用全局代理 URL，仅生效于下次 spawn。 */
 	proxy?: SessionProxyOverride;
+	/** 仅该会话启用 PiDeck 内置 AI 标题旁路；用于头脑风暴等需要自动归纳命名的流程。 */
+	autoSessionTitle?: boolean;
 	createdAt: number;
 	updatedAt: number;
 	wsl?: boolean;
@@ -213,12 +215,16 @@ export type CreateSessionDraftInput = {
 	backend?: import("./agent").AgentBackend;
 	/** DSH agent 预设（会话「模式」）草稿期预选；激活时随 sessions.create 应用。 */
 	agentPreset?: string;
+	/** 仅该会话启用 PiDeck 内置 AI 标题旁路。 */
+	autoSessionTitle?: boolean;
 };
 
 /** 启动前选择的模型与思考级别；显式值优先于 pi 配置默认值。 */
 export type SessionLaunchPreferences = {
 	model?: { provider: string; modelId: string };
 	thinkingLevel?: string;
+	/** 仅该会话启用 PiDeck 内置 AI 标题旁路。 */
+	autoSessionTitle?: boolean;
 };
 
 /**

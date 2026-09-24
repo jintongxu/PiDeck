@@ -24,6 +24,7 @@ import {
 	DropdownMenuTrigger,
 } from "../ui-shadcn/dropdown-menu";
 import { cn } from "../../lib/utils";
+import type { WorktreeStatus } from "../../utils/worktreeStatus";
 
 /** 项目行只做容器：hover 浅灰，永不挂选中底。
  * 选中态只给叶子会话（对标 dsh-web：.sessionRow.selected = hover 灰，项目行无 selected）。 */
@@ -92,6 +93,7 @@ export function ProjectTree(props: {
   branchByProject?: Readonly<Record<string, string | null | undefined>>;
   /** 正在删除的 worktree 路径集合（透传给 WorktreeTree 驱动淡出动画）。 */
   removingWorktreePaths?: ReadonlySet<string>;
+  worktreeStatuses?: Readonly<Record<string, WorktreeStatus>>;
 }) {
   const sessionRuntimeUiById = useAtomValue(sessionRuntimeUiByIdAtom);
   const rootProjects = props.controller.catalog.projects.filter((project) =>
@@ -290,6 +292,7 @@ export function ProjectTree(props: {
                 entries={props.worktreesByProject[project.id] ?? []}
                 branch={props.branchByProject?.[project.id]}
                 removingWorktreePaths={props.removingWorktreePaths}
+                worktreeStatuses={props.worktreeStatuses}
               />
             ) : (
               <SessionTree

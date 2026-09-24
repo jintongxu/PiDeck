@@ -36,16 +36,30 @@ export class WorktreeService {
 	 * 主工作区 40G 数据丢失）。
 	 */
 	async list(projectPath: string): Promise<WorktreeEntry[]> {
+		const entries = await this.listAll(projectPath);
+		const mainWorktree = await this.getMainWorktree(projectPath);
+		return entries.filter((entry) => !mainWorktree || !this.samePath(entry.path, this.canonicalSync(mainWorktree)));
+	}
+
+	/** List the main checkout and all linked worktrees for read-only status aggregation. */
+	async listAll(projectPath: string): Promise<WorktreeEntry[]> {
 		try {
 			const { stdout } = await execFileAsync(
-				"git",
+				currentGitExecutable(),
 				["worktree", "list", "--porcelain"],
 				{ cwd: projectPath },
 			);
+			const entries = this.parseWorktreeList(stdout, "");
+			// Git normally prints the main checkout first, but make that ordering an
+			// explicit contract so `isMain` remains correct across Git versions.
 			const mainWorktree = await this.getMainWorktree(projectPath);
-			return this.parseWorktreeList(stdout, mainWorktree ?? projectPath);
+			if (!mainWorktree) return entries;
+			const mainIndex = entries.findIndex((entry) => this.samePath(entry.path, mainWorktree));
+			if (mainIndex <= 0) return entries;
+			const [main] = entries.splice(mainIndex, 1);
+			entries.unshift(main);
+			return entries;
 		} catch {
-			// 非 git 目录或 git 未安装
 			return [];
 		}
 	}
@@ -69,7 +83,7 @@ export class WorktreeService {
 		// 创建 worktree（仅创建目录结构，不 checkout），再 reset --hard 填充内容。
 		try {
 			await execFileAsync(
-				"git",
+				currentGitExecutable(),
 				["worktree", "add", "--no-checkout", "-b", branch, worktreeDir],
 				{ cwd: projectPath },
 			);
@@ -171,7 +185,7 @@ export class WorktreeService {
 	private async getMainWorktree(projectPath: string): Promise<string | null> {
 		try {
 			const { stdout } = await execFileAsync(
-				"git",
+				currentGitExecutable(),
 				["rev-parse", "--git-common-dir"],
 				{ cwd: projectPath },
 			);
@@ -190,7 +204,7 @@ export class WorktreeService {
 	private parseWorktreeList(stdout: string, rootPath: string): WorktreeEntry[] {
 		const entries: WorktreeEntry[] = [];
 		// 规范化路径用于比较（Windows 忽略大小写）
-		const normalizedRoot = this.canonicalSync(rootPath);
+		const normalizedRoot = rootPath ? this.canonicalSync(rootPath) : null;
 
 		const lines = stdout.split(/\r?\n/);
 		let current: Partial<WorktreeEntry> | null = null;
@@ -201,7 +215,7 @@ export class WorktreeService {
 				// 空行 = 条目结束
 				if (current) {
 					const path = current.path ? resolve(current.path) : "";
-					if (!this.samePath(path, normalizedRoot)) {
+					if (!normalizedRoot || !this.samePath(path, normalizedRoot)) {
 						entries.push({
 							path,
 							branch: current.branch?.replace(/^refs\/heads\//, "") ?? "detached",
@@ -225,7 +239,7 @@ export class WorktreeService {
 		// 处理最后一条（文件可能不以空行结尾）
 		if (current) {
 			const path = current.path ? resolve(current.path) : "";
-			if (!this.samePath(path, normalizedRoot)) {
+			if (!normalizedRoot || !this.samePath(path, normalizedRoot)) {
 				entries.push({
 					path,
 					branch: current.branch?.replace(/^refs\/heads\//, "") ?? "detached",

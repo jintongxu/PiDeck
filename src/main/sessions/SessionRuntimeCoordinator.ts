@@ -1450,6 +1450,7 @@ export class SessionRuntimeCoordinator {
 				// DSH agent 预设（会话「模式」）：草稿期预选，新建 host 会话时随 sessions.create
 				// 应用；attach 已有会话时由 DshAgentManager 从 host list 行读回（本字段被忽略）。
 				agentPreset: entry.backend === "dsh" ? entry.agentPreset : undefined,
+				autoSessionTitle: entry.autoSessionTitle,
 				wslDistro: entry.wslDistro,
 				wslUser: entry.wslUser,
 				importedSourceId: entry.importedSourceId,

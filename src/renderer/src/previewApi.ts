@@ -834,6 +834,7 @@ export function createPreviewApi(): PiDesktopApi {
 				branch: branchName,
 			}),
 			worktreeRemove: async () => true,
+			worktreeStatus: async () => [],
 				commitLog: async () => [],
 				commitCount: async () => 0,
 				refs: async () => [],

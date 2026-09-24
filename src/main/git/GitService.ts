@@ -7,7 +7,7 @@ import { trashPath } from "../fs/trash";
 import { REF_BASE } from "../rewind/checkpointConstants";
 import { runGit as spawnGit, type RunGitOptions } from "./gitProcess";
 import { currentGitExecutable } from "./gitExecutable";
-import type { GitBranchInfo, CommitDetail, CommitEntry, GitRef, BranchDiffResult, GitChangedFile, GitFileStatus, GitCommitFileDiff, GitResourceGroupType, GitWorkspaceFileDiff, GitAheadBehind } from "../../shared/types";
+import type { GitBranchInfo, CommitDetail, CommitEntry, GitRef, BranchDiffResult, GitChangedFile, GitFileStatus, GitCommitFileDiff, GitResourceGroupType, GitWorkspaceFileDiff, GitAheadBehind, GitWorktreeStatus } from "../../shared/types";
 import { GitStatus } from "../../shared/types";
 import type { GitResource, GitResourceGroups } from "../../shared/types";
 
@@ -909,6 +909,45 @@ export class GitService {
 			}
 			throw err;
 		}
+	}
+
+	/**
+	 * Read-only status aggregation for the main checkout and linked worktrees.
+	 * Each row is isolated so a stale/missing sibling cannot hide healthy worktrees.
+	 */
+	async getWorktreeStatus(_cwd: string, entries: Array<{ path: string; branch: string }>): Promise<GitWorktreeStatus[]> {
+		return Promise.all(entries.map(async (entry, index) => {
+			try {
+				const groups = await this.getStatus(entry.path);
+				const aheadBehind = await this.getAheadBehind(entry.path);
+				return {
+					path: entry.path,
+					branch: entry.branch,
+					isMain: index === 0,
+					counts: {
+						staged: groups.index.length,
+						modified: groups.workingTree.length,
+						untracked: groups.untracked.length,
+						conflicted: groups.merge.length,
+					},
+					changed: groups.index.length + groups.workingTree.length + groups.untracked.length + groups.merge.length,
+					ahead: aheadBehind?.ahead ?? null,
+					behind: aheadBehind?.behind ?? null,
+				};
+			} catch {
+				// Status is best effort: one stale/missing worktree must not hide all siblings.
+				return {
+					path: entry.path,
+					branch: entry.branch,
+					isMain: index === 0,
+					counts: { staged: 0, modified: 0, untracked: 0, conflicted: 0 },
+					changed: 0,
+					ahead: null,
+					behind: null,
+					unavailable: true,
+				};
+			}
+		}));
 	}
 
 	/**

@@ -665,6 +665,7 @@ export function registerSessionIpc(deps: SessionIpcDeps): void {
 				backend: input.backend === "dsh" ? "dsh" : undefined,
 				model,
 				thinkingLevel,
+				...(input.autoSessionTitle === true ? { autoSessionTitle: true } : {}),
 			});
 			void appLogger.info("session", "Session draft created", {
 				sessionId: draft.id,

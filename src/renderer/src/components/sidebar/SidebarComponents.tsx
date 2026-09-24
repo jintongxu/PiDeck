@@ -1163,6 +1163,7 @@ export function WorktreeCreateDialog(props: {
 	projectId: string;
 	creating: boolean;
 	onCreate: (branchName: string) => void;
+	onCreateAndOpenSession?: (branchName: string) => void;
 	onClose: () => void;
 }) {
 	const [name, setName] = useState("");
@@ -1208,11 +1209,20 @@ export function WorktreeCreateDialog(props: {
 						{t("common.cancel")}
 					</Button>
 					<Button
+						variant="outline"
 						disabled={!name.trim() || props.creating}
 						onClick={() => props.onCreate(name.trim())}
 					>
 						{props.creating ? t("app.worktreeCreating") : t("app.worktreeCreate")}
 					</Button>
+					{props.onCreateAndOpenSession && (
+						<Button
+							disabled={!name.trim() || props.creating}
+							onClick={() => props.onCreateAndOpenSession?.(name.trim())}
+						>
+							{props.creating ? t("app.worktreeCreating") : t("app.worktreeCreateSession")}
+						</Button>
+					)}
 				</DialogFooter>
 			</DialogContent>
 		</Dialog>

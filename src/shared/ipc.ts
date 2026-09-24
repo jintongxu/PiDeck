@@ -360,6 +360,7 @@ export const ipcChannels = {
 	gitWorktreeList: "git:worktree-list",
 	gitWorktreeCreate: "git:worktree-create",
 	gitWorktreeRemove: "git:worktree-remove",
+	gitWorktreeStatus: "git:worktree-status",
 	gitCommitLog: "git:commit-log",
 	/** 与当前图谱过滤一致的提交总数（不分页），供源代码管理图标题徽章使用。 */
 	gitCommitCount: "git:commit-count",

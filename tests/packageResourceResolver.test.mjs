@@ -216,3 +216,35 @@ test("bun legacy fallback derives its global node_modules directory from pm bin"
 		rmSync(root, { recursive: true, force: true });
 	}
 });
+
+test("user-managed pi-maestro-flow is re-read after an in-place package update", () => {
+	const root = mkdtempSync(join(tmpdir(), "pideck-maestro-update-"));
+	try {
+		const agentDir = join(root, "agent");
+		const settingsFile = join(agentDir, "settings.json");
+		const packageRoot = join(agentDir, "npm", "node_modules", "pi-maestro-flow");
+		put(settingsFile, JSON.stringify({ packages: ["npm:pi-maestro-flow"] }));
+		put(join(packageRoot, "package.json"), JSON.stringify({
+			name: "pi-maestro-flow",
+			version: "1.0.0",
+			pi: { extensions: ["src/extension/v1.ts"] },
+		}));
+		put(join(packageRoot, "src/extension/v1.ts"), "export default () => {};\n");
+		const { resolveConfiguredPackageResources } = loadTsCommonJs("src/main/packageResourceResolver.ts");
+		const options = { userSettingsFile: settingsFile, userBaseDir: agentDir };
+		const firstResources = resolveExtensions(resolveConfiguredPackageResources, options);
+		assert.equal([...firstResources][0].path, join(packageRoot, "src/extension/v1.ts"));
+
+		rmSync(join(packageRoot, "src/extension/v1.ts"));
+		put(join(packageRoot, "package.json"), JSON.stringify({
+			name: "pi-maestro-flow",
+			version: "2.0.0",
+			pi: { extensions: ["src/extension/v2.ts"] },
+		}));
+		put(join(packageRoot, "src/extension/v2.ts"), "export default () => {};\n");
+		const updatedResources = resolveExtensions(resolveConfiguredPackageResources, options);
+		assert.equal([...updatedResources][0].path, join(packageRoot, "src/extension/v2.ts"));
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});

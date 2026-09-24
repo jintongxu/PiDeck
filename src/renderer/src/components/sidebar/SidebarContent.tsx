@@ -41,6 +41,7 @@ import { displayProjectDirectoryName, isChatProject } from "../../rendererUtils"
 import { formatAccelerator } from "../../../../shared/shortcuts";
 import { desktopApi } from "../../desktopApi";
 import { useShortcutBindings } from "../../hooks/useShortcutBindings";
+import type { WorktreeStatus } from "../../utils/worktreeStatus";
 
 const WEBSITE_URL = "https://ayuayue.github.io/PiDeck/";
 
@@ -120,6 +121,7 @@ export type SidebarActions = {
   };
   worktrees: {
     create: (projectId: string, branchName: string) => Promise<void>;
+    createAndOpenSession: (projectId: string, branchName: string) => Promise<void>;
     remove: (parentProjectId: string, entry: WorktreeEntry, childProject?: Project) => Promise<void>;
   };
   rpc: {
@@ -139,6 +141,7 @@ export type SidebarContentProps = {
   creatingWorktree?: boolean;
   /** 正在删除的 worktree 路径集合（透传给 WorktreeTree 驱动淡出动画）。 */
   removingWorktreePaths?: ReadonlySet<string>;
+  worktreeStatuses?: Readonly<Record<string, WorktreeStatus>>;
   isLanWeb?: boolean;
   chrome?: ReactNode;
   /** 「新建会话」：打开初始引导页（居中输入框 + 项目下拉切换），由 App 提供。 */
@@ -440,6 +443,7 @@ export function SidebarContent(props: SidebarContentProps) {
             worktreesByProject={props.worktreesByProject}
             branchByProject={props.branchByProject}
             removingWorktreePaths={props.removingWorktreePaths}
+            worktreeStatuses={props.worktreeStatuses}
           />
         </section>
       </div>
@@ -719,7 +723,8 @@ export function SidebarContent(props: SidebarContentProps) {
         <WorktreeCreateDialog
           projectId={controller.worktreeCreateProjectId}
           creating={Boolean(props.creatingWorktree)}
-          onCreate={(branchName) => void actions.worktrees.create(controller.worktreeCreateProjectId!, branchName).then(controller.closeWorktreeCreate)}
+          onCreate={(branchName) => void actions.worktrees.create(controller.worktreeCreateProjectId!, branchName).then(controller.closeWorktreeCreate).catch(() => undefined)}
+          onCreateAndOpenSession={(branchName) => void actions.worktrees.createAndOpenSession(controller.worktreeCreateProjectId!, branchName).then(controller.closeWorktreeCreate).catch(() => undefined)}
           onClose={controller.closeWorktreeCreate}
         />
       )}

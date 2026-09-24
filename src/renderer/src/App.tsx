@@ -961,6 +961,7 @@ export function App() {
     worktreeCreating,
     removingWorktreePaths,
     createWorktree,
+    createAndOpenSession,
     removeWorktree,
     requestRemoveWorktree,
     toggleProjectWorktree,
@@ -3330,6 +3331,15 @@ export function App() {
     worktrees: {
       create: async (projectId, branchName) => {
         await createWorktree(projectId, branchName);
+      },
+      createAndOpenSession: async (projectId, branchName) => {
+        try {
+          await createAndOpenSession(projectId, branchName, async (childProjectId) => {
+            await createSessionDraftWithTab(childProjectId);
+          });
+        } catch (error) {
+          showToast(t("app.worktreeSessionCreateFailed"), 5000, "error");
+        }
       },
       remove: (parentProjectId, entry, childProject) => {
         requestRemoveWorktree(parentProjectId, entry.path, childProject);

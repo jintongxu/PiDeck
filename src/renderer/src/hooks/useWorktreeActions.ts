@@ -10,6 +10,13 @@ import { desktopApi as api } from "../desktopApi";
 import { showNotice } from "../utils/notice";
 import { t } from "../i18n";
 
+function worktreePathKey(path: string): string {
+	const normalized = path.replace(/[\\/]+$/, "").replaceAll("\\", "/");
+	return /^[A-Za-z]:\//.test(normalized) || normalized.startsWith("//")
+		? normalized.toLowerCase()
+		: normalized;
+}
+
 export interface WorktreeActionsDeps {
 	projects: Project[];
 	displayAgents: AgentTab[];
@@ -53,6 +60,26 @@ export function useWorktreeActions(deps: WorktreeActionsDeps) {
 			setWorktreeCreating(false);
 		}
 	}
+
+	/** 创建隔离 worktree 并把新草稿明确绑定到新子项目，避免回落到父项目。 */
+	async function createAndOpenSession(
+		projectId: string,
+		branchName: string,
+		onProjectReady: (projectId: string) => Promise<void>,
+	) {
+		const result = await createWorktree(projectId, branchName);
+		const next = await api.projects.list();
+		setProjects(next);
+		const createdPath = worktreePathKey(result.path);
+		const child = next.find((project) =>
+			project.worktreeParentId === projectId && worktreePathKey(project.path) === createdPath,
+		);
+		if (!child) {
+			throw new Error("Created worktree project was not registered");
+		}
+		await onProjectReady(child.id);
+	}
+
 
 	/** 删除 worktree 工作区 */
 	async function removeWorktree(parentProjectId: string, worktreePath: string) {
@@ -135,6 +162,7 @@ export function useWorktreeActions(deps: WorktreeActionsDeps) {
 		worktreeCreating,
 		removingWorktreePaths,
 		createWorktree,
+		createAndOpenSession,
 		removeWorktree,
 		requestRemoveWorktree,
 		toggleProjectWorktree,

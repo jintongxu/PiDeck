@@ -245,6 +245,8 @@ export type CreateAgentInput = {
 	noSession?: boolean;
 	/** Start a disposable formatting runtime without Pi tools. */
 	noTools?: boolean;
+	/** 仅该会话启用 PiDeck 内置 AI 标题旁路。 */
+	autoSessionTitle?: boolean;
 };
 
 export type AgentUiResponse = {

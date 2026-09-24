@@ -64,6 +64,8 @@ export type SessionCatalogEntry = {
 	agentPreset?: string;
 	/** 会话级代理覆盖（缺省 = 跟随全局）。DSH 会话的设置在 host 启动时被聚合应用。 */
 	proxy?: SessionProxyOverride;
+	/** 仅该会话启用 PiDeck 内置 AI 标题旁路。 */
+	autoSessionTitle?: boolean;
 	createdAt: number;
 	updatedAt: number;
 };
@@ -515,6 +517,8 @@ export class SessionCatalog {
 		permissionPreset?: string;
 		/** DSH agent 预设（会话「模式」）草稿期预选；外部会话导入时来自 host 会话 header。 */
 		agentPreset?: string;
+		/** 仅该会话启用 PiDeck 内置 AI 标题旁路。 */
+		autoSessionTitle?: boolean;
 		/** 外部（dsh-web 等）会话导入：host 会话已存在，条目直接置 active（重启不清理）。 */
 		dshSessionId?: string;
 		/**
@@ -593,6 +597,7 @@ export class SessionCatalog {
 				thinkingLevel: input.thinkingLevel,
 				permissionPreset: input.permissionPreset,
 				agentPreset: input.agentPreset,
+				autoSessionTitle: input.autoSessionTitle,
 				dshSessionId: input.dshSessionId,
 				createdAt: now,
 				// 外部会话导入带 mtime（真实活跃时间）；pi 草稿没有该字段，仍用当前时刻
@@ -1135,6 +1140,7 @@ export class SessionCatalog {
 			agentPreset: entry.agentPreset,
 			dshSessionId: entry.dshSessionId,
 			proxy: entry.proxy ? { ...entry.proxy } : undefined,
+			autoSessionTitle: entry.autoSessionTitle,
 			createdAt: entry.createdAt,
 			updatedAt: summary?.updatedAt ?? entry.updatedAt,
 			wsl: summary?.wsl,

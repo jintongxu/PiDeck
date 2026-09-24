@@ -536,6 +536,25 @@ export function registerGitIpc({
 	);
 
 	ipcMain.handle(
+		ipcChannels.gitWorktreeStatus,
+		async (_event, projectId: string) => {
+			if (typeof projectId !== "string" || projectId.trim().length === 0) {
+				throw new Error("Invalid project id");
+			}
+			const project = projectStore.get(projectId);
+			if (!project) throw new Error(`Project not found: ${projectId}`);
+			const cwd = projectHostPath(project);
+			const entries = await worktreeService.listAll(cwd);
+			return gitService.getWorktreeStatus(cwd, entries).then((statuses) =>
+				statuses.map((status) => ({
+					...status,
+					path: projectStoredPath(status.path, project),
+				})),
+			);
+		},
+	);
+
+	ipcMain.handle(
 		ipcChannels.gitWorkspaceFileDiff,
 		async (_event, projectId: string, group: GitWorkspaceDiffGroup, filePath: string, repoPath?: string) => {
 			const cwd = findGitCwd(projectId, repoPath);

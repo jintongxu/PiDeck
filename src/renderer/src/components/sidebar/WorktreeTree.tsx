@@ -12,6 +12,7 @@ import { countPendingAsksForSessions } from "../../utils/askUi";
 import { cn } from "../../lib/utils";
 import { mergeWorkspaceTreeRows, type WorkspaceTreeRow } from "./workspaceTreeModel";
 import { normalizeWorkspacePath } from "./workspaceTreeModel";
+import { worktreeStatusKey, type WorktreeStatus } from "../../utils/worktreeStatus";
 
 // 主工作区是根项目展开后的首个导航项，字号需要与父项目保持一致；
 // 其他 worktree 只是该项目的分支入口，渲染时会覆写为较小的 text-control，避免子项抢占层级。
@@ -23,6 +24,30 @@ const workspaceActionClass = "text-muted-foreground hover:bg-muted hover:text-fo
 const workspaceActionPaddingClass =
   "group-hover/workspace-row:pr-[52px] group-focus-within/workspace-row:pr-[52px]";
 const workspaceSessionsClass = "min-w-0 basis-[calc(100%-24px)] ml-6 pl-2";
+
+function WorktreeStatusBadge(props: { status?: WorktreeStatus }) {
+  const status = props.status;
+  if (!status) return null;
+  if (status.unavailable) {
+    return (
+      <Badge variant="outline" className="h-4 shrink-0 px-1 py-0 text-[10px] leading-none text-muted-foreground" title={t("app.worktreeStatusUnavailable")}>
+        !
+      </Badge>
+    );
+  }
+  const changed = status.counts.staged + status.counts.modified + status.counts.untracked;
+  if (changed === 0 && status.counts.conflicted === 0 && !(status.ahead ?? 0) && !(status.behind ?? 0)) return null;
+  const parts: string[] = [];
+  if (status.counts.conflicted > 0) parts.push(t("app.worktreeStatusConflicts", { count: String(status.counts.conflicted) }));
+  if (changed > 0) parts.push(t("app.worktreeStatusChanged", { count: String(changed) }));
+  if ((status.ahead ?? 0) > 0) parts.push(`↑${status.ahead}`);
+  if ((status.behind ?? 0) > 0) parts.push(`↓${status.behind}`);
+  return (
+    <Badge variant="outline" className="h-4 max-w-36 shrink-0 gap-0.5 truncate border-warning/40 bg-warning/10 px-1 py-0 text-[10px] leading-none text-warning" title={t("app.worktreeStatusHint")}>
+      {parts.join(" · ")}
+    </Badge>
+  );
+}
 
 /**
  * 工作区标题操作与普通项目行保持同一呈现：两个等尺寸的 + / ⋯ 浮层按钮。
@@ -55,7 +80,9 @@ export function WorktreeTree(props: {
   branch?: string | null;
   /** 正在删除的 worktree 路径集合（与 removingWorktreePaths 同源，路径已归一化）。 */
   removingWorktreePaths?: ReadonlySet<string>;
+  worktreeStatuses?: Readonly<Record<string, WorktreeStatus>>;
 }) {
+  const mainStatus = props.worktreeStatuses?.[worktreeStatusKey(props.project.path)];
   const childProjects = props.controller.catalog.projects.filter(
     (project) => project.worktreeParentId === props.project.id,
   );
@@ -130,6 +157,7 @@ export function WorktreeTree(props: {
                   </Badge>
                 )}
                 <span className="worktree-main-branch min-w-0 truncate text-control text-muted-foreground">{props.branch ?? t("app.worktreeBranchLoading")}</span>
+                <WorktreeStatusBadge status={mainStatus} />
               </span>
             </span>
           </Button>
@@ -209,6 +237,7 @@ export function WorktreeTree(props: {
             actions={props.actions}
             currentSessionId={props.currentSessionId}
             removing={removingPaths.has(row.key)}
+            status={props.worktreeStatuses?.[worktreeStatusKey(row.path)]}
           />
         ))}
       </section>
@@ -227,6 +256,7 @@ function WorkspaceTreeRowView(props: {
   currentSessionId?: string;
   /** 该行是否正在删除（命中 removingWorktreePaths 时淡出）。 */
   removing?: boolean;
+  status?: WorktreeStatus;
 }) {
   const { row } = props;
   const childProject = row.project;
@@ -303,6 +333,7 @@ function WorkspaceTreeRowView(props: {
           {row.directory !== row.branch && (
             <span className="workspace-tree-directory max-w-20 shrink-0 truncate text-micro text-muted-foreground">{row.directory}</span>
           )}
+          <WorktreeStatusBadge status={props.status} />
         </button>
 
         {childProject && (

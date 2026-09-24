@@ -43,6 +43,26 @@ export type WorktreeEntry = {
 	branch: string;
 };
 
+/** Read-only aggregate status for the repository main worktree or a linked worktree. */
+export type GitWorktreeStatus = {
+	path: string;
+	branch: string;
+	isMain: boolean;
+	counts: {
+		staged: number;
+		modified: number;
+		untracked: number;
+		conflicted: number;
+	};
+	/** Total status resources, including merge conflicts. */
+	changed: number;
+	/** Null means the current branch has no configured upstream (or comparison is unavailable). */
+	ahead: number | null;
+	behind: number | null;
+	/** True when this worktree could not be inspected; never present for a clean worktree. */
+	unavailable?: boolean;
+};
+
 // ── VS Code 风格 Git Status 系统 ─────────────────────────────────────
 
 /** Git 文件状态枚举，对应 VS Code Status enum（非 const，用于运行时映射） */

@@ -679,7 +679,7 @@ export class AgentManager {
 		cwd: string,
 		sessionPath?: string,
 		securitySessionKey?: string,
-		settingsOverride?: Partial<Pick<AppSettings, "piRpcNoExtensions" | "piRpcNoSkills" | "removedBuiltInExtensions">>,
+		settingsOverride?: Partial<Pick<AppSettings, "piRpcNoExtensions" | "piRpcNoSkills" | "removedBuiltInExtensions" | "autoSessionTitle">>,
 	): PiProcess {
 		const settings = settingsOverride
 			? { ...this.settingsStore.get(), ...settingsOverride }
@@ -1692,7 +1692,10 @@ export class AgentManager {
 				project.path,
 				input.sessionPath,
 				input.deckSessionId,
-				input.noTools ? { piRpcNoExtensions: true, piRpcNoSkills: true } : undefined,
+				{
+					...(input.noTools ? { piRpcNoExtensions: true, piRpcNoSkills: true } : {}),
+					...(input.autoSessionTitle ? { autoSessionTitle: true } : {}),
+				},
 			),
 		});
 		this.messages.set(id, []);

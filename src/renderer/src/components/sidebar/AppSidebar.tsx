@@ -3,6 +3,7 @@ import { useSetAtom } from "jotai";
 import { PanelLeft } from "lucide-react";
 import { SidebarContent, type SidebarActions } from "./SidebarContent";
 import type { AppInfo, AppThemeMode, WorktreeEntry } from "../../../../shared/types";
+import { useWorktreeStatus } from "../../hooks/useWorktreeStatus";
 import { useSidebarController } from "../../hooks/useSidebarController";
 import type { SidebarNavTab } from "../../utils/sidebarNavTab";
 import type { SidebarSessionOrderScope } from "../../../../shared/sidebarSessionOrder";
@@ -49,7 +50,7 @@ interface AppSidebarProps {
 }
 
 export function AppSidebar(props: AppSidebarProps) {
-  const setSettingsOpen = useSetAtom(settingsOpenAtom);  // 快速连续点击展开/折叠会触发多次 IPC；按顺序写入可避免旧请求最后完成后覆盖新集合。
+  const setSettingsOpen = useSetAtom(settingsOpenAtom);
   const expandedProjectsSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const navTabSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
   const pinnedSessionIdsSaveQueueRef = useRef<Promise<unknown>>(Promise.resolve());
@@ -91,6 +92,8 @@ export function AppSidebar(props: AppSidebarProps) {
     },
   });
 
+  const worktreeStatuses = useWorktreeStatus(controller.catalog.projects);
+
   return (
     <>
     <SidebarContent
@@ -102,6 +105,7 @@ export function AppSidebar(props: AppSidebarProps) {
       branchByProject={props.branchByProject}
       creatingWorktree={props.creatingWorktree}
       removingWorktreePaths={props.removingWorktreePaths}
+      worktreeStatuses={worktreeStatuses}
       isLanWeb={props.isLanWeb}
       onOpenNewSession={props.onOpenNewSession}
       chrome={<>
