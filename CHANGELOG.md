@@ -1,4 +1,13 @@
-## v0.7.10 - 2026-09-22
+## v0.7.11 - 2026-09-24
+
+### 🚀 New Features
+- **Workspace-scoped project ideas and isolated worktree sessions** — Organize project ideas by workspace, continue implementation in the correct workspace, and keep related worktree sessions isolated and manageable.
+- **AI session titles across workspaces** — Sessions receive clearer generated titles while preserving workspace context.
+
+### 🐛 Fixes
+- **More reliable worktree lifecycle management** — Clean up branches and worktrees safely, protect active resources from accidental deletion, and keep Git status and session state synchronized.
+- **Improved agent and error notifications** — Surface interrupted turns and upstream failures promptly with clearer user-facing feedback.
+
 
 ### 🚀 New Features
 - **Project ideas now flow from notes to implementation** — Keep the original note intact while Pi produces a separate editable refinement with summary, problem, goal, scope, acceptance criteria, and open questions. After explicit confirmation, choose the implementation model and thinking level from one compact picker, then start work in a linked session; deleted implementation sessions no longer leave a stale “Continue” action.

@@ -9,7 +9,7 @@
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-lightgrey)
 ![Electron](https://img.shields.io/badge/Electron-38-47848f)
 ![React](https://img.shields.io/badge/React-19-61dafb)
-![Version](https://img.shields.io/badge/version-0.7.10-blue)
+![Version](https://img.shields.io/badge/version-0.7.11-blue)
 
 <!-- star-history:start -->
 <picture>
@@ -40,7 +40,7 @@
   - [📑 Table of Contents](#-table-of-contents)
   - [✨ Highlights](#-highlights)
   - [📋 Changelog](#-changelog)
-    - [v0.7.6 Release Highlights](#v076-release-highlights)
+    - [v0.7.11 Release Highlights](#v0711-release-highlights)
   - [🧩 Features](#-features)
     - [Workspace & Projects](#workspace--projects)
     - [Sessions & Conversation](#sessions--conversation)
@@ -79,11 +79,15 @@
 
 ## 📋 Changelog
 
-> **Latest: v0.7.10** (2026-09-22)
+> **Latest: v0.7.11** (2026-09-24)
 
-### v0.7.10 Release Highlights
+### v0.7.11 Release Highlights
+- 🚀 **Workspace-scoped project ideas and isolated worktree sessions**
+- 🚀 **AI session titles across workspaces**
 - 🚀 **Project ideas now flow from notes to implementation**
 - 🚀 **Upload project-idea images through PicGo**
+- ✨ **More reliable worktree lifecycle management**
+- ✨ **Improved agent and error notifications**
 - ✨ **Maestro Plan approval resumes cleanly in PiDeck**
 - ✨ **Fork-specific announcements removed**
 
