@@ -50,6 +50,7 @@ import type {
   GitResourceGroupType,
   GitResourceGroups,
 } from "../../../../shared/types";
+import type { GitMainSyncSnapshot } from "../../../../shared/types/gitSync";
 import { GitStatus } from "../../../../shared/types";
 import {
   EMPTY_GIT_COMMIT_COMPOSER,
@@ -77,6 +78,26 @@ import { Label } from "../../components/ui-shadcn/label";
 
 /** 与主进程 quickGenerate 60s 上限对齐：面板进度条按此时长爬升，避免用户误以为卡住。 */
 const COMMIT_GEN_TIMEOUT_MS = 60_000;
+
+function mainSyncReasonText(reason: string): string {
+  const keyByReason: Record<string, "git.mainSyncReasonDirty" | "git.mainSyncReasonConflicted" | "git.mainSyncReasonActive" | "git.mainSyncReasonDiverged" | "git.mainSyncReasonLocalAhead" | "git.mainSyncReasonRemoteFailed" | "git.mainSyncReasonNoUpstream" | "git.mainSyncReasonUnavailable" | "git.mainSyncReasonBusy" | "git.mainSyncReasonNoMainBranch" | "git.mainSyncReasonMissingWorktree" | "git.mainSyncReasonDifferentBranch" | "git.mainSyncReasonFailed"> = {
+    dirty: "git.mainSyncReasonDirty",
+    conflicted: "git.mainSyncReasonConflicted",
+    active: "git.mainSyncReasonActive",
+    diverged: "git.mainSyncReasonDiverged",
+    "local-ahead": "git.mainSyncReasonLocalAhead",
+    "remote-failed": "git.mainSyncReasonRemoteFailed",
+    "no-upstream": "git.mainSyncReasonNoUpstream",
+    unavailable: "git.mainSyncReasonUnavailable",
+    busy: "git.mainSyncReasonBusy",
+    "no-main-branch": "git.mainSyncReasonNoMainBranch",
+    "missing-worktree": "git.mainSyncReasonMissingWorktree",
+    "different-branch": "git.mainSyncReasonDifferentBranch",
+    failed: "git.mainSyncReasonFailed",
+  };
+  const key = keyByReason[reason];
+  return key ? t(key) : reason;
+}
 
 /** 错误 toast 必须有正文：showNotice 会丢掉空串，失败就会看起来像“没反应”。 */
 function commitGenNoticeText(message: string | undefined, fallback: string) {
@@ -217,6 +238,8 @@ type GitPanelProps = {
   pull?: (projectId: string) => Promise<void>;
   /** Fetch：刷新远程跟踪引用，供定时轮询 ahead/behind 角标 */
   fetch?: (projectId: string) => Promise<void>;
+  /** 保守同步主分支（仅 fast-forward） */
+  mainSyncNow?: (projectId: string) => Promise<GitMainSyncSnapshot>;
   /** 当前分支相对上游的提交差距；无上游返回 null（不显示角标） */
   aheadBehind?: (projectId: string) => Promise<GitAheadBehind | null>;
   /** 从磁盘删除变更文件（移入回收站） */
@@ -662,6 +685,7 @@ export function GitPanel(props: GitPanelProps) {
   const [committing, setCommitting] = useState(false);
   const [pushing, setPushing] = useState(false);
   const [pulling, setPulling] = useState(false);
+  const [syncingMain, setSyncingMain] = useState(false);
   const [mutating, setMutating] = useState(false);
   const [notAGitRepo, setNotAGitRepo] = useState(false);
   const [gitNotInstalled, setGitNotInstalled] = useState(false);
@@ -1305,6 +1329,25 @@ export function GitPanel(props: GitPanelProps) {
     }
   };
 
+  const doMainSync = async () => {
+    if (!props.mainSyncNow || syncingMain || mutationRunningRef.current) return;
+    setSyncingMain(true);
+    try {
+      const snapshot = await props.mainSyncNow(props.projectId);
+      if (snapshot.status === "blocked" || snapshot.status === "failed") {
+        const reason = snapshot.worktrees.find((item) => item.reason)?.reason ?? snapshot.error ?? "failed";
+        showNotice(t("git.mainSyncBlocked", { reason: mainSyncReasonText(reason) }), 7000, "warning");
+      } else {
+        showNotice(t("git.mainSyncSuccess"), 3000);
+        await refresh();
+      }
+    } catch (error) {
+      showNotice(gitOperationErrorText(error) || t("git.mainSyncFailed"), 7000, "error");
+    } finally {
+      setSyncingMain(false);
+    }
+  };
+
   const doPull = async () => {
     if (!props.pull || mutationRunningRef.current) return;
     const projectId = props.projectId;
@@ -1485,6 +1528,11 @@ export function GitPanel(props: GitPanelProps) {
       >
         <RefreshCw size={14} />
       </Button>
+      {props.mainSyncNow && (
+        <Button type="button" variant="ghost" size="icon-sm" className="size-7" title={t("git.mainSync")} aria-label={t("git.mainSync")} disabled={syncingMain || mutationRunningRef.current} onClick={() => void doMainSync()}>
+          {syncingMain ? <Loader2 size={14} className="animate-pideck-spin" /> : <RefreshCw size={14} />}
+        </Button>
+      )}
       {props.push && (
         <div className="relative inline-flex items-center">
           <Button

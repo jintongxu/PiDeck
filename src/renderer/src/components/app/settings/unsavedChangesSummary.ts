@@ -151,6 +151,10 @@ const FIELD_CATALOG: readonly FieldCatalogEntry[] = [
 	{ field: "externalEditors", tab: "editors", itemKey: "settings.sectionEditors" },
 	// Git 区块原在常用设置，随独立 tab 挪到「开发者」簇（web/editors 之后、dev 之前）
 	{ field: "enableGitManagement", tab: "git", itemKey: "settings.gitManagement" },
+	{ field: "gitAutoSyncEnabled", tab: "git", itemKey: "settings.gitAutoSync" },
+	{ field: "gitAutoSyncIntervalMin", tab: "git", itemKey: "settings.gitAutoSyncInterval" },
+	{ field: "gitAutoSyncOnStartup", tab: "git", itemKey: "settings.gitAutoSyncStartup" },
+	{ field: "gitAutoSyncWorktrees", tab: "git", itemKey: "settings.gitAutoSyncWorktrees" },
 	{ field: "gitCommitMessageProvider", tab: "git", itemKey: "settings.gitCommitMessageModel" },
 	{ field: "gitCommitMessageModel", tab: "git", itemKey: "settings.gitCommitMessageModel" },
 	{ field: "projectIdeaRefinementProvider", tab: "common", itemKey: "settings.projectIdeaRefinementModel" },

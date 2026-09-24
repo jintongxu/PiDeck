@@ -125,6 +125,10 @@ const defaultSettings: AppSettings = {
   // 统一后由本设置项决定，用户可在常用设置→会话中改回。
   busySendDelivery: "steer",
   enableGitManagement: true,
+  gitAutoSyncEnabled: false,
+  gitAutoSyncIntervalMin: 30,
+  gitAutoSyncOnStartup: false,
+  gitAutoSyncWorktrees: false,
   gitCommitMessagePrompt: `请根据以下 git diff 生成一条中文 git commit message。
 
 变更描述：
@@ -361,6 +365,7 @@ export class SettingsStore {
       // 统一清洗，坏条目回落平台默认，避免主进程匹配读到无效键。
       this.settings.shortcuts = sanitizeShortcutOverrides(parsed.shortcuts, process.platform);
       this.settings.projectIdeaRefinementThinkingLevel = normalizeProjectIdeaRefinementThinkingLevel(parsed.projectIdeaRefinementThinkingLevel);
+      this.normalizeGitAutoSyncSettings();
     } catch {
       this.settings = { ...defaultSettings };
     }
@@ -440,6 +445,21 @@ export class SettingsStore {
     }
     if ("projectIdeaRefinementThinkingLevel" in safePatch) {
       safePatch.projectIdeaRefinementThinkingLevel = normalizeProjectIdeaRefinementThinkingLevel(safePatch.projectIdeaRefinementThinkingLevel);
+    }
+    if ("gitAutoSyncEnabled" in safePatch && typeof safePatch.gitAutoSyncEnabled !== "boolean") {
+      safePatch.gitAutoSyncEnabled = defaultSettings.gitAutoSyncEnabled;
+    }
+    if ("gitAutoSyncOnStartup" in safePatch && typeof safePatch.gitAutoSyncOnStartup !== "boolean") {
+      safePatch.gitAutoSyncOnStartup = defaultSettings.gitAutoSyncOnStartup;
+    }
+    if ("gitAutoSyncWorktrees" in safePatch && typeof safePatch.gitAutoSyncWorktrees !== "boolean") {
+      safePatch.gitAutoSyncWorktrees = defaultSettings.gitAutoSyncWorktrees;
+    }
+    if ("gitAutoSyncIntervalMin" in safePatch) {
+      const interval = Number(safePatch.gitAutoSyncIntervalMin);
+      safePatch.gitAutoSyncIntervalMin = Number.isFinite(interval)
+        ? Math.min(1440, Math.max(5, Math.floor(interval)))
+        : defaultSettings.gitAutoSyncIntervalMin;
     }
     // 全局快捷键覆盖来自渲染层，入参不可信：只保留已知 id + 合法 accelerator 的条目。
     if ("shortcuts" in safePatch) {
@@ -573,6 +593,23 @@ export class SettingsStore {
     // 只记变更的 key 列表，不记值——避免 proxyUrl 等敏感内容落盘；值变更回查用 save 前的内存态
     void getAppLogger()?.info("settings", "Settings updated", { keys: Object.keys(safePatch) });
     return this.get();
+  }
+
+  /** Normalize persisted auto-sync settings while keeping old settings files compatible. */
+  private normalizeGitAutoSyncSettings() {
+    if (typeof this.settings.gitAutoSyncEnabled !== "boolean") {
+      this.settings.gitAutoSyncEnabled = defaultSettings.gitAutoSyncEnabled;
+    }
+    if (typeof this.settings.gitAutoSyncOnStartup !== "boolean") {
+      this.settings.gitAutoSyncOnStartup = defaultSettings.gitAutoSyncOnStartup;
+    }
+    if (typeof this.settings.gitAutoSyncWorktrees !== "boolean") {
+      this.settings.gitAutoSyncWorktrees = defaultSettings.gitAutoSyncWorktrees;
+    }
+    const interval = Number(this.settings.gitAutoSyncIntervalMin);
+    this.settings.gitAutoSyncIntervalMin = Number.isFinite(interval)
+      ? Math.min(1440, Math.max(5, Math.floor(interval)))
+      : defaultSettings.gitAutoSyncIntervalMin;
   }
 
   /** 规范化按供应商代理白名单：去重、去空白、过滤非字符串。 */

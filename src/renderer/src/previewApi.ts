@@ -121,6 +121,11 @@ let previewSettings: AppSettings = {
 	// 与 SettingsStore 默认一致：忙碌时发送默认「插入当前回合」
 	busySendDelivery: "steer",
 	enableGitManagement: true,
+	// 保守策略：仅 fast-forward，不做 stash/merge/rebase；预览默认关闭自动同步。
+	gitAutoSyncEnabled: false,
+	gitAutoSyncIntervalMin: 30,
+	gitAutoSyncOnStartup: false,
+	gitAutoSyncWorktrees: false,
 	gitCommitMessagePrompt: "",
 	gitCommitMessageProvider: "",
 	gitCommitMessageModel: "",
@@ -872,6 +877,9 @@ export function createPreviewApi(): PiDesktopApi {
 			}),
 			// 预览环境无文件对话框：恒取消
 			chooseExecutable: async () => null,
+			mainSyncStatus: async (projectId) => ({ projectId, startedAt: 0, source: "manual" as const, status: "idle" as const, worktrees: [] }),
+			mainSyncNow: async (projectId) => ({ projectId, startedAt: Date.now(), finishedAt: Date.now(), source: "manual" as const, status: "unchanged" as const, worktrees: [] }),
+			onMainSyncChanged: () => () => undefined,
 		},
 		logs: {
 			list: async () => [],

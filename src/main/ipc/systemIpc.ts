@@ -226,6 +226,8 @@ export type SystemIpcDeps = {
 	applyNativeThemeSource?: (settings: AppSettings) => void;
 	/** Apply desktop proxy settings */
 	applyDesktopProxy?: (settings: AppSettings) => Promise<void>;
+	/** Refresh main-branch sync scheduler after auto-sync setting changes. */
+	refreshGitMainSyncScheduler?: () => void;
 	/** Test Pi proxy */
 	testPiProxy?: (settings: AppSettings, proxyUrl?: string, translate?: (key: string, params?: Record<string, string | number>) => string) => Promise<import("../../shared/types").PiProxyTestResult>;
 	/** Web service manager apply settings */
@@ -345,6 +347,7 @@ export function registerSystemIpc(deps: SystemIpcDeps): void {
 		notifyTitleBarChange,
 		applyNativeThemeSource,
 		applyDesktopProxy,
+		refreshGitMainSyncScheduler,
 		testPiProxy,
 		applyWebServiceSettings,
 		restartWebService,
@@ -1403,6 +1406,9 @@ export function registerSystemIpc(deps: SystemIpcDeps): void {
 		// Git 可执行文件路径：立即同步给 git 子进程解析器，保存后无需重启即生效。
 		if ("gitExecutablePath" in patch) {
 			setConfiguredGitPath(settings.gitExecutablePath);
+		}
+		if ("gitAutoSyncEnabled" in patch || "gitAutoSyncIntervalMin" in patch || "gitAutoSyncWorktrees" in patch) {
+			refreshGitMainSyncScheduler?.();
 		}
 		// DSH runner 的 node 路径写入 host fork env：已运行的 host 必须重启才生效。
 		if ("dshRunnerNodePath" in patch && prevSettings.dshRunnerNodePath !== settings.dshRunnerNodePath) {

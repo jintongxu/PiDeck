@@ -140,6 +140,14 @@ export type AppSettings = {
 	busySendDelivery: BusySendDelivery;
 	/** 是否启用会话右侧的 Git 源代码管理入口与面板，默认开启以保持升级前行为。 */
 	enableGitManagement: boolean;
+	/** 自动同步 main 的保守策略：仅 fast-forward，不做 stash/merge/rebase；默认关闭。 */
+	gitAutoSyncEnabled: boolean;
+	/** 自动同步间隔（分钟），由主进程钳制在 5–1440 的整数范围。 */
+	gitAutoSyncIntervalMin: number;
+	/** 是否在应用启动时尝试自动同步 main，默认关闭。 */
+	gitAutoSyncOnStartup: boolean;
+	/** 是否同步 Git worktree；保守策略默认关闭。 */
+	gitAutoSyncWorktrees: boolean;
 	/** Git 提交摘要生成提示词模板，{diff} 会被替换为实际 diff 内容 */
 	gitCommitMessagePrompt: string;
 	/** Git 提交摘要使用的 pi provider；为空时生成前提示用户配置 */

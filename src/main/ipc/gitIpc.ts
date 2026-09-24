@@ -390,7 +390,7 @@ export function registerGitIpc({
 			const hostProjectPath = projectHostPath(project);
 			const entries = typeof worktreeService.listAndEnsureBranches === "function"
 				? await worktreeService.listAndEnsureBranches(hostProjectPath, protectedBranches)
-				: await worktreeService.list(hostProjectPath);
+				: await worktreeService.list(projectHostPath(project));
 			const storedEntries = entries.map((entry) => ({
 				...entry,
 				path: projectStoredPath(entry.path, project),

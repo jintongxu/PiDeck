@@ -911,6 +911,102 @@ export class GitService {
 		}
 	}
 
+	/** Current checked-out local branch, or null for detached HEAD/non-git. */
+	async getCurrentBranch(cwd: string): Promise<string | null> {
+		try {
+			const { stdout } = await this.git(["branch", "--show-current"], { cwd, timeoutMs: GIT_MUTATION_TIMEOUT_MS });
+			return stdout.trim() || null;
+		} catch {
+			return null;
+		}
+	}
+
+	/** Configured upstream ref (for example refs/remotes/origin/main). */
+	async getUpstreamRef(cwd: string): Promise<string | null> {
+		try {
+			const { stdout } = await this.git(["rev-parse", "--symbolic-full-name", "@{upstream}"], { cwd, timeoutMs: GIT_MUTATION_TIMEOUT_MS });
+			return stdout.trim() || null;
+		} catch { return null; }
+	}
+
+	/** Resolve origin's advertised default branch, with conventional fallbacks. */
+	async getDefaultBranchName(cwd: string): Promise<string | null> {
+		try {
+			const { stdout } = await this.git(["symbolic-ref", "--quiet", "refs/remotes/origin/HEAD"], { cwd, timeoutMs: GIT_MUTATION_TIMEOUT_MS });
+			const ref = stdout.trim();
+			if (ref.startsWith("refs/remotes/origin/")) return ref.slice("refs/remotes/origin/".length);
+		} catch { /* fall through */ }
+		for (const name of ["main", "master"]) {
+			try { await this.git(["show-ref", "--verify", "--quiet", `refs/heads/${name}`], { cwd, timeoutMs: GIT_MUTATION_TIMEOUT_MS }); return name; } catch { /* next */ }
+		}
+		return null;
+	}
+
+	/** Resolve any ref to its commit hash, or null when unresolvable. Never throws. */
+	async resolveRefHash(cwd: string, ref: string): Promise<string | null> {
+		try {
+			const { stdout } = await this.git(["rev-parse", "--verify", `${ref}^{commit}`], { cwd, timeoutMs: GIT_MUTATION_TIMEOUT_MS });
+			const hash = stdout.trim();
+			return /^[0-9a-f]{40}$/i.test(hash) ? hash : null;
+		} catch {
+			return null;
+		}
+	}
+
+	async isAncestor(cwd: string, ancestor: string, descendant: string): Promise<boolean> {
+		try { await this.git(["merge-base", "--is-ancestor", ancestor, descendant], { cwd, timeoutMs: GIT_MUTATION_TIMEOUT_MS }); return true; }
+		catch { return false; }
+	}
+
+	/**
+	 * Compact porcelain state used by the sync safety gate.
+	 * dirty = any staged/unstaged/untracked entry; conflicted = unmerged paths.
+	 */
+	async getPorcelainSummary(cwd: string): Promise<{ dirty: boolean; conflicted: boolean }> {
+		const { stdout } = await this.git(["status", "--porcelain=v1", "--untracked-files=all"], { cwd, timeoutMs: GIT_MUTATION_TIMEOUT_MS });
+		// Git normally emits LF, but callers can provide repositories/configuration that
+		// normalize status output to CRLF. Strip the terminator before reading XY.
+		const lines = stdout.split(/\r?\n/).map((line) => line.replace(/\r$/, "")).filter((line) => line.length > 0);
+		const conflicted = lines.some((line) => {
+			if (line.length < 2) return false;
+			const x = line[0];
+			const y = line[1];
+			// Porcelain unmerged states: UU, AA, DD, AU, UA, DU and UD.
+			return x === "U" || y === "U" || (x === "A" && y === "A") ||
+				(x === "D" && y === "D");
+		});
+		return { dirty: lines.length > 0, conflicted };
+	}
+
+	/** Fetch origin refs with prune. Safe: never touches the working tree. */
+	async fetchOrigin(cwd: string): Promise<void> {
+		await this.git(["fetch", "origin", "--prune"], { cwd, timeoutMs: GIT_MUTATION_TIMEOUT_MS * 4 });
+	}
+
+	/** Fast-forward the currently checked-out branch only. Never rebases or merges diverged tips. */
+	async fastForwardCurrentBranch(cwd: string, targetRef: string): Promise<void> {
+		await this.git(["merge", "--ff-only", "--no-edit", targetRef], { cwd, timeoutMs: GIT_MUTATION_TIMEOUT_MS });
+	}
+
+	/**
+	 * Update a NOT-checked-out local branch from its remote counterpart.
+	 * `git fetch origin <remote>:<local>` refuses non-fast-forward and refuses
+	 * branches checked out in any worktree, so this cannot rewrite live work.
+	 */
+	async fetchBranchIntoLocal(cwd: string, remoteBranch: string, localBranch: string): Promise<void> {
+		if (!remoteBranch || remoteBranch.startsWith("-") || !localBranch || localBranch.startsWith("-")) {
+			throw new Error("Invalid branch name");
+		}
+		await this.git(["fetch", "origin", `${remoteBranch}:${localBranch}`], { cwd, timeoutMs: GIT_MUTATION_TIMEOUT_MS * 4 });
+	}
+
+	/** Fast-forward a checked-out branch only; never rewrites an arbitrary ref. */
+	async fastForwardBranchRef(cwd: string, branch: string, targetRef: string): Promise<void> {
+		const current = await this.getCurrentBranch(cwd);
+		if (current !== branch) throw new Error(`Branch ${branch} is not checked out`);
+		await this.fastForwardCurrentBranch(cwd, targetRef);
+	}
+
 	/**
 	 * Read-only status aggregation for the main checkout and linked worktrees.
 	 * Each row is isolated so a stale/missing sibling cannot hide healthy worktrees.

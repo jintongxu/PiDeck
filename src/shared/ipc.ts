@@ -386,6 +386,9 @@ export const ipcChannels = {
 	gitGenerateCommitMessage: "git:generate-commit-message",
 	gitInit: "git:init",
 	gitFetch: "git:fetch",
+	gitMainSyncStatus: "git:main-sync-status",
+	gitMainSyncNow: "git:main-sync-now",
+	gitMainSyncChanged: "git:main-sync-changed",
 	/** 当前分支相对上游的提交差距（ahead/behind），驱动 push/pull 角标 */
 	gitAheadBehind: "git:ahead-behind",
 	/** 从磁盘删除变更文件（移入回收站，可恢复） */
