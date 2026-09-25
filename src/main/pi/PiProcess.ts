@@ -46,7 +46,7 @@ type PiProcessSettings = Pick<
 type PiProcessLocator = Pick<
   PiLocator,
   "resolveCommand" | "createInvocation" | "createProcessEnv" | "resolveArgCharBudget"
-> & Partial<Pick<PiLocator, "warmWslCommand">>;
+> & Partial<Pick<PiLocator, "warmWslCommand" | "getWslMaestroBinDir">>;
 
 
 /** 可选：覆盖扩展扫描用的用户 home（WSL 映射 Windows home 时传入）。 */
@@ -119,6 +119,8 @@ type PiProcessOptions = {
    * 返回是否发生修复；抛错或未注入都不阻塞启动（pi 自身的加载错误更接近事实，留日志即可）。
    */
   repairSessionFileBeforeStart?: (sessionPath: string) => Promise<boolean>;
+  /** Resolve extra package bin directories, such as the configured Maestro CLI. */
+  resolveAdditionalPathDirs?: (includeProjectResources?: boolean, command?: string) => string[];
 };
 
 /**
@@ -713,10 +715,14 @@ export class PiProcess extends EventEmitter {
         return arg;
       });
     }
+    const additionalPathDirs = this.resolveAdditionalPathDirs(command, includeProjectResources);
     const invocation = this.locator.createInvocation(
       command,
       finalPiArgs,
-      wslCwd ? { wslCwd } : undefined,
+      {
+        ...(wslCwd ? { wslCwd } : {}),
+        additionalPathDirs,
+      },
     );
     const finalArgs = invocation.args;
 
@@ -777,7 +783,12 @@ export class PiProcess extends EventEmitter {
         sessionKey: this.options.securitySessionId,
       });
     }
-    const env = this.locator.createProcessEnv(effectiveSettings, invocation.pathPrefix, invocation.wsl);
+    const env = this.locator.createProcessEnv(
+      effectiveSettings,
+      invocation.pathPrefix,
+      invocation.wsl,
+      invocation.additionalPathDirs,
+    );
     if (this.options.securitySnapshotPath) {
       env.PIDECK_SECURITY_CONFIG = command.startsWith("wsl://")
         ? toWslLinuxPath(this.options.securitySnapshotPath, { distro: this.settings?.wslDistro ?? "" })
@@ -1002,14 +1013,21 @@ export class PiProcess extends EventEmitter {
     if (cached?.status === "pending") return cached.promise;
 
     const promise = new Promise<boolean>((resolve) => {
-      const invocation = this.locator.createInvocation(command, ["--version"]);
+      const invocation = this.locator.createInvocation(command, ["--version"], {
+        additionalPathDirs: this.resolveAdditionalPathDirs(command, true),
+      });
       execFile(invocation.command, invocation.args, {
         encoding: "utf8" as const,
         timeout: 5_000,
         shell: false,
         // Windows：--version 检查同样经 cmd.exe 拉起，缺 windowsHide 会闪现控制台窗口。
         windowsHide: true,
-        env: this.locator.createProcessEnv(this.settings, invocation.pathPrefix),
+        env: this.locator.createProcessEnv(
+          this.settings,
+          invocation.pathPrefix,
+          invocation.wsl,
+          invocation.additionalPathDirs,
+        ),
         windowsVerbatimArguments: invocation.windowsVerbatimArguments,
       }, (error, stdout) => {
         const ok = !error;
@@ -1026,6 +1044,31 @@ export class PiProcess extends EventEmitter {
     });
     PiProcess.versionCache.set(command, { status: "pending", promise });
     return promise;
+  }
+
+  /** Resolve and, for WSL, translate extra package bin dirs into the runtime filesystem. */
+  private resolveAdditionalPathDirs(command: string, includeProjectResources: boolean): string[] {
+    if (command.startsWith("wsl://")) {
+      const distro = this.settings?.wslDistro;
+      const user = this.settings?.wslUser;
+      const cachedMaestro = distro && user ? this.locator.getWslMaestroBinDir?.(distro, user) : undefined;
+      if (cachedMaestro) return [cachedMaestro];
+      if (!distro) return [];
+      const dirs = this.options.resolveAdditionalPathDirs?.(includeProjectResources, command) ?? [];
+      return dirs.flatMap((dir) => {
+        try {
+          return [toWslLinuxPath(dir, { distro })];
+        } catch (error) {
+          void getAppLogger()?.warn("pi-process", "Skipping an unusable WSL package bin directory", {
+            dir,
+            error: error instanceof Error ? error.message : String(error),
+          });
+          return [];
+        }
+      });
+    }
+    const dirs = this.options.resolveAdditionalPathDirs?.(includeProjectResources, command) ?? [];
+    return dirs;
   }
 
   /**

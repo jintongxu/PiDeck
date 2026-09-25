@@ -31,6 +31,16 @@ type PackageResourceOptions = {
 	collectDirectory: (directory: string) => string[];
 };
 
+export type ConfiguredPackageRootsOptions = Omit<PackageResourceOptions, "resourceType" | "collectDirectory">;
+
+export type ResolvedConfiguredPackageRoot = {
+	path: string;
+	scope: PackageResourceScope;
+	/** Scope that owns the physical installation. A project delta can point at a user install. */
+	physicalScope: PackageResourceScope;
+	source: string;
+};
+
 type ConfiguredPackage = {
 	raw: unknown;
 	source: string;
@@ -447,6 +457,45 @@ function canonicalResourceKey(path: string): string {
 		// so the resolver remains best-effort instead of turning a transient race into a crash.
 		return resolve(path);
 	}
+}
+
+/**
+ * Resolve configured package installation roots using pi's project-over-user ordering.
+ * Resource-specific filters are intentionally ignored: callers such as runtime helpers need
+ * the package root even when a package manifest exposes no extensions/skills/prompts.
+ */
+export function resolveConfiguredPackageRoots(
+	options: ConfiguredPackageRootsOptions,
+): ResolvedConfiguredPackageRoot[] {
+	const projectEntries = options.projectSettingsFile && options.projectBaseDir
+		? configuredPackages(options.projectSettingsFile, "project", options.projectBaseDir)
+		: [];
+	const userEntries = configuredPackages(options.userSettingsFile, "user", options.userBaseDir);
+	const entries = dedupePackages([...projectEntries, ...userEntries]);
+	const roots = new Map<string, ResolvedConfiguredPackageRoot>();
+
+	for (const entry of entries) {
+		let physicalEntry = entry;
+		if (entry.scope === "project" && entry.filter?.autoload === false) {
+			const identity = packageIdentity(entry);
+			const userEntry = userEntries.find((candidate) => packageIdentity(candidate) === identity);
+			if (!userEntry) continue;
+			physicalEntry = userEntry;
+		}
+		const installed = resolveInstalledPath(physicalEntry);
+		if (!installed) continue;
+		const path = resolve(installed.path);
+		const key = canonicalResourceKey(path);
+		if (!roots.has(key)) {
+			roots.set(key, {
+				path,
+				scope: entry.scope,
+				physicalScope: physicalEntry.scope,
+				source: entry.source,
+			});
+		}
+	}
+	return [...roots.values()];
 }
 
 /**
