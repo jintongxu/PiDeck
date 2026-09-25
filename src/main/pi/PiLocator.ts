@@ -26,6 +26,7 @@ import { decodeWslOutput } from "../wsl/wslExe";
 type WslCommandCacheEntry = {
   command: string | null;
   nodeBinDir: string;
+  maestroBinDir: string;
   at: number;
 };
 
@@ -76,6 +77,8 @@ export type PiCommandInvocation = {
    * 必须禁止 Node 再次转义参数，否则路径中含空格会被 cmd 误解析为不存在的路径。
    */
   windowsVerbatimArguments?: boolean;
+  /** Additional validated host-side bin directories required by loaded Pi packages. */
+  additionalPathDirs?: string[];
   /**
    * 当 pi 位于 WSL 中时，command 固定为 wsl.exe，args 会携带 distro/user/pi 参数。
    * 下游 PiProcess 需要用此标志决定是否把 Windows cwd 转为 Linux 路径。
@@ -312,7 +315,16 @@ export class PiLocator {
     return [...new Set(dirs.filter(Boolean))];
   }
 
-  createProcessEnv(settings?: PiProxySettings, pathPrefix?: string, wsl?: PiCommandInvocation["wsl"]) {
+  getWslMaestroBinDir(distro: string, user: string): string | undefined {
+    return this.readWslCache(wslCommandCacheKey(distro, user))?.maestroBinDir || undefined;
+  }
+
+  createProcessEnv(
+    settings?: PiProxySettings,
+    pathPrefix?: string,
+    wsl?: PiCommandInvocation["wsl"],
+    additionalPathDirs: readonly string[] = [],
+  ) {
     if (wsl) {
       // WSL 模式：保留原始 PATH 以便找到 wsl.exe（在 System32 中），
       // 同时注入代理环境变量（wsl.exe 子进程通过 Windows 网络栈访问外网）。
@@ -325,9 +337,12 @@ export class PiLocator {
       });
       return this.applyPiProxyEnv(base, settings);
     }
-    const searchDirs = pathPrefix
-      ? [pathPrefix, ...this.getSearchDirs().filter(dir => dir !== pathPrefix)]
-      : this.getSearchDirs();
+    const extraDirs = additionalPathDirs.filter((dir) => dir.trim().length > 0);
+    const searchDirs = [
+      ...(pathPrefix ? [pathPrefix] : []),
+      ...this.getSearchDirs().filter(dir => dir !== pathPrefix && !extraDirs.includes(dir)),
+      ...extraDirs,
+    ];
     const pathValue = searchDirs.join(delimiter);
     const env = this.sanitizePiChildEnv({
       ...process.env,
@@ -380,7 +395,11 @@ export class PiLocator {
     return next;
   }
 
-  createInvocation(command: string, args: string[], options: { wslCwd?: string } = {}): PiCommandInvocation {
+  createInvocation(
+    command: string,
+    args: string[],
+    options: { wslCwd?: string; additionalPathDirs?: readonly string[] } = {},
+  ): PiCommandInvocation {
     // WSL 模式：command 为 "wsl://<distro>/<user>/<pi 绝对路径>" 形式的标记
     if (command.startsWith("wsl://")) {
       const parsed = this.parseWslUrl(command);
@@ -393,6 +412,7 @@ export class PiLocator {
         user,
         piCommand,
         nodeBinDir: this.peekCachedWslNodeBinDir(distro, user, piCommand),
+        additionalPathDirs: options.additionalPathDirs,
         wslCwd: options.wslCwd,
         args,
       });
@@ -401,6 +421,7 @@ export class PiLocator {
         args: wslArgs,
         shell: wslExe.shell,
         wsl: { distro, user, piCommand },
+        additionalPathDirs: options.additionalPathDirs ? [...options.additionalPathDirs] : undefined,
       };
     }
 
@@ -415,11 +436,18 @@ export class PiLocator {
         shell: false,
         // JS 文件同目录一般没有 node；靠 createProcessEnv 的搜索目录解析 node。
         pathPrefix: this.getCommandBinDir(command),
+        additionalPathDirs: options.additionalPathDirs ? [...options.additionalPathDirs] : undefined,
       };
     }
 
     if (process.platform !== "win32") {
-      return { command, args, shell: false, pathPrefix: this.getCommandBinDir(command) };
+      return {
+        command,
+        args,
+        shell: false,
+        pathPrefix: this.getCommandBinDir(command),
+        additionalPathDirs: options.additionalPathDirs ? [...options.additionalPathDirs] : undefined,
+      };
     }
 
     // Windows：npm/pnpm 的 pi 是 .cmd 垫片，内容只是把参数转发给
@@ -441,6 +469,7 @@ export class PiLocator {
         args: [shimEntry.entry, ...args],
         shell: false,
         pathPrefix: this.getCommandBinDir(command),
+        additionalPathDirs: options.additionalPathDirs ? [...options.additionalPathDirs] : undefined,
         windowsLaunch: { channel: "node-direct", entry: shimEntry.entry },
       };
     }
@@ -460,6 +489,7 @@ export class PiLocator {
       args: ["/d", "/s", "/c", commandLine],
       shell: false,
       pathPrefix: this.getCommandBinDir(command),
+      additionalPathDirs: options.additionalPathDirs ? [...options.additionalPathDirs] : undefined,
       // 关键：cmd /c 的最后一个参数是完整命令行，里面的引号由 quoteCmdArgument/control 逻辑维护。
       // 若让 Node 再转义一次，`D:\\foo bar\\pi.cmd` 会变成 cmd 无法识别的路径。
       windowsVerbatimArguments: true,
@@ -809,6 +839,7 @@ export class PiLocator {
         wslCommandCache.set(key, {
           command,
           nodeBinDir: result?.nodeBinDir ?? "",
+          maestroBinDir: result?.maestroBinDir ?? "",
           at: Date.now(),
         });
         return command;

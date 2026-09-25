@@ -217,6 +217,27 @@ test("bun legacy fallback derives its global node_modules directory from pm bin"
 	}
 });
 
+test("project autoload false does not expose a project-only package root", () => {
+	const root = mkdtempSync(join(tmpdir(), "pideck-package-roots-disabled-"));
+	try {
+		const projectPiDir = join(root, "project", ".pi");
+		const settingsFile = join(projectPiDir, "settings.json");
+		const packageRoot = join(projectPiDir, "npm", "node_modules", "pi-maestro-flow");
+		put(settingsFile, JSON.stringify({ packages: [{ source: packageRoot, autoload: false }] }));
+		put(join(packageRoot, "package.json"), JSON.stringify({ name: "pi-maestro-flow" }));
+		const { resolveConfiguredPackageRoots } = loadTsCommonJs("src/main/packageResourceResolver.ts");
+		const roots = resolveConfiguredPackageRoots({
+			userSettingsFile: join(root, "agent", "settings.json"),
+			userBaseDir: join(root, "agent"),
+			projectSettingsFile: settingsFile,
+			projectBaseDir: projectPiDir,
+		});
+		assert.equal(roots.length, 0);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
 test("user-managed pi-maestro-flow is re-read after an in-place package update", () => {
 	const root = mkdtempSync(join(tmpdir(), "pideck-maestro-update-"));
 	try {

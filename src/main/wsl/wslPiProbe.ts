@@ -26,6 +26,8 @@ export type WslPiProbeResult = {
 	piPath: string;
 	/** 与该 pi 配套的 node 所在目录；启动时前置注入 PATH，供 `env node` shebang 使用。 */
 	nodeBinDir: string;
+	/** WSL 内 Maestro CLI 所在的 bin 目录；用于 skill 内直接调用 `maestro`。 */
+	maestroBinDir?: string;
 };
 
 /**
@@ -59,9 +61,21 @@ export const WSL_PI_CANDIDATE_DIRS: readonly string[] = [
 	"/home/linuxbrew/.linuxbrew/bin",
 ];
 
+/** WSL-local locations used by pi-maestro-flow and global npm installs. */
+export const WSL_MAESTRO_CANDIDATE_DIRS: readonly string[] = [
+	"$HOME/.pi/agent/npm/node_modules/pi-maestro-flow/node_modules/.bin",
+	"$HOME/.local/share/fnm/node-versions/*/installation/lib/node_modules/pi-maestro-flow/node_modules/.bin",
+	"$HOME/.fnm/node-versions/*/installation/lib/node_modules/pi-maestro-flow/node_modules/.bin",
+	"$HOME/.npm-global/bin",
+	"$HOME/.local/share/pnpm",
+	"/usr/local/lib/node_modules/pi-maestro-flow/node_modules/.bin",
+	"/usr/lib/node_modules/pi-maestro-flow/node_modules/.bin",
+];
+
 /** 探测脚本输出的键名；rc 噪音（PROMPT_COMMAND、欢迎语）靠它过滤。 */
 const PI_KEY = "PIDECK_PI=";
 const NODE_BIN_KEY = "PIDECK_NODE_BIN=";
+const MAESTRO_BIN_KEY = "PIDECK_MAESTRO_BIN=";
 
 function isAbsoluteLinuxPath(value: string): boolean {
 	return value.startsWith("/");
@@ -93,7 +107,18 @@ export function isWslInteropPath(path: string): boolean {
 export function buildWslPiProbeScript(extraCandidateDirs: readonly string[] = []): string {
 	const candidateDirs = [...WSL_PI_CANDIDATE_DIRS, ...extraCandidateDirs].filter(Boolean);
 	const candidateList = candidateDirs.map(quoteProbeCandidate).join(" ");
+	const maestroCandidateList = WSL_MAESTRO_CANDIDATE_DIRS.map((dir) => {
+		if (dir.startsWith("$HOME/")) return `"$HOME"/${dir.slice("$HOME/".length)}/maestro`;
+		const value = `${dir}/maestro`;
+		return `'${value.replace(/'/g, "'\\''")}'`;
+	}).join(" ");
 	return [
+		"_pideck_emit_maestro() {",
+		'  case "$1" in /*) ;; *) return 1 ;; esac',
+		'  case "$1" in /mnt/*) return 1 ;; esac',
+		'  [ -x "$1" ] || return 1',
+		'  printf \'PIDECK_MAESTRO_BIN=%s\\n\' "$(dirname "$1")"',
+		"}",
 		"_pideck_emit() {",
 		// 必须是绝对路径、可执行、且不是 Windows interop shim
 		'  case "$1" in /*) ;; *) return 1 ;; esac',
@@ -105,6 +130,9 @@ export function buildWslPiProbeScript(extraCandidateDirs: readonly string[] = []
 		'  printf \'PIDECK_NODE_BIN=%s\\n\' "$_bin"',
 		"  exit 0",
 		"}",
+		// Maestro is independent from pi: it is often in pi-maestro-flow's nested .bin.
+		'_m=$(command -v maestro 2>/dev/null); _pideck_emit_maestro "$_m"',
+		`for _m in ${maestroCandidateList}; do _pideck_emit_maestro "$_m" && break; done`,
 		// L1：交互登录 shell 已 source nvm/fnm 初始化，覆盖用户自定义安装位置
 		'_p=$(command -v pi 2>/dev/null)',
 		'_n=$(command -v node 2>/dev/null)',
@@ -154,7 +182,13 @@ export function parseWslPiProbeOutput(stdout: string): WslPiProbeResult | null {
 	if (!isAbsoluteLinuxPath(nodeBinDir) || isWslInteropPath(nodeBinDir)) {
 		nodeBinDir = piPath.slice(0, piPath.lastIndexOf("/")) || "/";
 	}
-	return { piPath, nodeBinDir };
+	let maestroBinDir = "";
+	for (const rawLine of String(stdout ?? "").split(/\r?\n/)) {
+		const line = rawLine.replace(/\0/g, "").trim();
+		if (line.startsWith(MAESTRO_BIN_KEY)) maestroBinDir = line.slice(MAESTRO_BIN_KEY.length);
+	}
+	if (!isAbsoluteLinuxPath(maestroBinDir) || isWslInteropPath(maestroBinDir)) maestroBinDir = "";
+	return { piPath, nodeBinDir, ...(maestroBinDir ? { maestroBinDir } : {}) };
 }
 
 export type WslPiExecArgsInput = {
@@ -164,6 +198,8 @@ export type WslPiExecArgsInput = {
 	piCommand: string;
 	/** 与 pi 配套的 node bin 目录；缺省时从 piCommand 推导。 */
 	nodeBinDir?: string;
+	/** 已验证、已转换好的额外 Linux bin 目录（例如 Maestro CLI）。 */
+	additionalPathDirs?: readonly string[];
 	/** 已转换好的 Linux 工作目录（`--cd`）。 */
 	wslCwd?: string;
 	args: readonly string[];
@@ -191,7 +227,13 @@ export function buildWslPiExecArgs(input: WslPiExecArgsInput): string[] {
 		isAbsoluteLinuxPath(candidate) && !isWslInteropPath(candidate)
 			? candidate
 			: input.piCommand.slice(0, input.piCommand.lastIndexOf("/")) || "/";
-	const pathValue = nodeBinDir === "/" ? WSL_PI_BASE_PATH : `${nodeBinDir}:${WSL_PI_BASE_PATH}`;
+	const additionalPathDirs = (input.additionalPathDirs ?? []).filter(
+		(path) => isAbsoluteLinuxPath(path) && !isWslInteropPath(path),
+	);
+	const pathEntries = [nodeBinDir, ...additionalPathDirs, WSL_PI_BASE_PATH]
+		.filter((path, index, entries) => entries.indexOf(path) === index)
+		.filter((path) => path !== "/");
+	const pathValue = pathEntries.join(":");
 	return [...args, "-e", "/usr/bin/env", `PATH=${pathValue}`, input.piCommand, ...input.args];
 }
 

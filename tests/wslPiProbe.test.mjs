@@ -68,6 +68,13 @@ test("probe script asks package managers for their prefix as a last resort", () 
 	assert.ok(script.includes("asdf which pi"));
 });
 
+test("probe script discovers a distro-local maestro CLI independently from pi", () => {
+	const script = probe.buildWslPiProbeScript();
+	assert.ok(script.includes("command -v maestro"));
+	assert.ok(script.includes(".pi/agent/npm/node_modules/pi-maestro-flow/node_modules/.bin/maestro"));
+	assert.ok(script.includes("PIDECK_MAESTRO_BIN="));
+});
+
 test("probe script rejects windows interop hits so host pi is never mistaken for wsl pi", () => {
 	const script = probe.buildWslPiProbeScript();
 	// appendWindowsPath=true 时 PATH 带 /mnt/c/...，那里是 Windows 侧 shim
@@ -99,14 +106,16 @@ test("probe script appends caller supplied candidate dirs", () => {
 
 // ── 探测输出解析 ──────────────────────────────────────────────────────
 
-test("parses pi path and node bin dir from probe output", () => {
+test("parses pi path, node bin dir, and maestro bin dir from probe output", () => {
 	const result = probe.parseWslPiProbeOutput(
 		"PIDECK_PI=/home/u/.local/share/fnm/node-versions/v24.20.0/installation/bin/pi\n" +
-			"PIDECK_NODE_BIN=/home/u/.local/share/fnm/node-versions/v24.20.0/installation/bin\n",
+			"PIDECK_NODE_BIN=/home/u/.local/share/fnm/node-versions/v24.20.0/installation/bin\n" +
+			"PIDECK_MAESTRO_BIN=/home/u/.pi/agent/npm/node_modules/pi-maestro-flow/node_modules/.bin\n",
 	);
 	eqDeep(result, {
 		piPath: "/home/u/.local/share/fnm/node-versions/v24.20.0/installation/bin/pi",
 		nodeBinDir: "/home/u/.local/share/fnm/node-versions/v24.20.0/installation/bin",
+		maestroBinDir: "/home/u/.pi/agent/npm/node_modules/pi-maestro-flow/node_modules/.bin",
 	});
 });
 
@@ -223,6 +232,24 @@ test("ignores a windows interop node bin dir when injecting PATH", () => {
 		args: [],
 	});
 	assert.equal(args[6], "PATH=/usr/bin:" + probe.WSL_PI_BASE_PATH);
+});
+
+test("adds validated Linux package bins to the WSL runtime PATH", () => {
+	const args = probe.buildWslPiExecArgs({
+		distro: "Ubuntu",
+		user: "dev",
+		piCommand: "/home/dev/.local/share/fnm/node-versions/v24/installation/bin/pi",
+		nodeBinDir: "/home/dev/.local/share/fnm/node-versions/v24/installation/bin",
+		additionalPathDirs: [
+			"/home/dev/.pi/agent/npm/node_modules/pi-maestro-flow/node_modules/.bin",
+			"/mnt/c/Users/dev/AppData/Roaming/npm",
+		],
+		args: ["--version"],
+	});
+	assert.equal(
+		args[6],
+		"PATH=/home/dev/.local/share/fnm/node-versions/v24/installation/bin:/home/dev/.pi/agent/npm/node_modules/pi-maestro-flow/node_modules/.bin:" + probe.WSL_PI_BASE_PATH,
+	);
 });
 
 // ── wsl:// 标记 ───────────────────────────────────────────────────────

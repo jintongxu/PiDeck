@@ -55,6 +55,7 @@ import { listActiveBuiltInExtensionPaths } from "../extensions/builtInExtensions
 import { createPiProcessExtensionResolvers } from "../extensions/piProcessExtensionResolvers";
 import { createPiProcessSkillResolvers } from "../skills/piProcessSkillResolvers";
 import { createPiProcessPromptResolvers } from "../prompts/piProcessPromptResolvers";
+import { resolveConfiguredMaestroCliBinDirs } from "./maestroCliPath";
 import {
 	describeExtensionFallbackSkip,
 	formatExtensionFallbackDebug,
@@ -714,6 +715,19 @@ export class AgentManager {
 			securitySnapshotPath: this.securityStore?.getSnapshotPath(),
 			// 预检修复：全部 spawn 路径（create/reattach/withTemporarySession）都在 start() 内生效。
 			repairSessionFileBeforeStart: this.repairSessionFile,
+			// pi-maestro-flow 的 maestro CLI 是其嵌套 maestro-flow 依赖的 .bin，
+			// 不一定在 Electron/Pi 子进程继承的 PATH 中；按 pi 同样的 package 解析规则
+			// 找到后由 PiProcess 在 native/WSL spawn 时分别注入。
+			resolveAdditionalPathDirs: (includeProjectResources = true, command) => {
+				const wsl = command?.startsWith("wsl://") === true;
+				return resolveConfiguredMaestroCliBinDirs({
+					userSettingsFile: join(this.configManager.getConfigDir(), "settings.json"),
+					userBaseDir: this.configManager.getConfigDir(),
+					projectSettingsFile: includeProjectResources ? join(cwd, ".pi", "settings.json") : undefined,
+					projectBaseDir: includeProjectResources ? join(cwd, ".pi") : undefined,
+					wsl,
+				});
+			},
 		});
 	}
 

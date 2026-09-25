@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { mkdirSync, rmSync, writeFileSync, readFileSync } from "node:fs";
 import { createRequire } from "node:module";
-import { join, dirname } from "node:path";
+import { delimiter, join, dirname } from "node:path";
 import { tmpdir } from "node:os";
 import test from "node:test";
 import ts from "typescript";
@@ -312,6 +312,21 @@ test("createProcessEnv prepends search dirs to PATH/Path without pathPrefix (npm
 		// 模块可能在 Linux 宿主上模拟 win32，不断言宿主分隔符。
 		assert.ok(String(env.PATH).includes(join(root, "Local", "pnpm")));
 		assert.equal(env.Path, env.PATH);
+	} finally {
+		rmSync(root, { recursive: true, force: true });
+	}
+});
+
+test("createProcessEnv prepends validated package bin dirs so maestro is discoverable", () => {
+	const root = join(tmpdir(), `pi-desktop-locator-maestro-env-${process.pid}-${Date.now()}`);
+	const maestroBin = join(root, "pi-maestro-flow", "node_modules", ".bin");
+	mkdirSync(maestroBin, { recursive: true });
+	try {
+		const { PiLocator } = loadPiLocatorModule("linux", { PATH: "/usr/bin" }, root);
+		const env = new PiLocator().createProcessEnv(undefined, undefined, undefined, [maestroBin]);
+		const pathEntries = String(env.PATH).split(delimiter);
+		assert.ok(pathEntries.includes(maestroBin));
+		assert.ok(pathEntries.indexOf(maestroBin) > pathEntries.indexOf("/usr/bin"));
 	} finally {
 		rmSync(root, { recursive: true, force: true });
 	}
